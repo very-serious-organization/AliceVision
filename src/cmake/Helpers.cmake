@@ -247,3 +247,4 @@ function(alicevision_add_test test_file)
   endif()
 
 endfunction()
+
