@@ -1,4 +1,3 @@
-#include <aliceVision/image/io.hpp>
 
 #include <iostream>
 #include <sstream>
