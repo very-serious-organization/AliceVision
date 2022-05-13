@@ -23,6 +23,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/progress.hpp>
 
+#include <H5Cpp.h>
+
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -45,232 +47,377 @@ namespace po = boost::program_options;
 namespace fs = boost::filesystem;
 
 // Convert HUE color to RGB
-inline float hue2rgb(float p, float q, float t){
-  if(t < 0) t += 1;
-  if(t > 1) t -= 1;
-  if(t < 1.f/6.f) return p + (q - p) * 6.f * t;
-  if(t < 1.f/2.f) return q;
-  if(t < 2.f/3.f) return p + (q - p) * (2.f/3.f - t) * 6.f;
-  return p;
+inline float hue2rgb(float p, float q, float t)
+{
+    if(t < 0)
+        t += 1;
+    if(t > 1)
+        t -= 1;
+    if(t < 1.f / 6.f)
+        return p + (q - p) * 6.f * t;
+    if(t < 1.f / 2.f)
+        return q;
+    if(t < 2.f / 3.f)
+        return p + (q - p) * (2.f / 3.f - t) * 6.f;
+    return p;
 }
 
 // Converts an HSL color value to RGB. Conversion formula
 // adapted from http://en.wikipedia.org/wiki/HSL_color_space.
 // Assumes h, s, and l are contained in the set [0, 1] and
 // returns r, g, and b in the set [0, 255].
-void hslToRgb(float h, float s, float l,
-   unsigned char & r, unsigned char & g, unsigned char & b)
+void hslToRgb(float h, float s, float l, unsigned char& r, unsigned char& g, unsigned char& b)
 {
-  if(s == 0){
-    r = g = b = static_cast<unsigned char>(l * 255.f); // achromatic
-  }else{
-    const float q = l < 0.5f ? l * (1 + s) : l + s - l * s;
-    const float p = 2.f * l - q;
-    r = static_cast<unsigned char>(hue2rgb(p, q, h + 1.f/3.f) * 255.f);
-    g = static_cast<unsigned char>(hue2rgb(p, q, h) * 255.f);
-    b = static_cast<unsigned char>(hue2rgb(p, q, h - 1.f/3.f) * 255.f);
-  }
+    if(s == 0)
+    {
+        r = g = b = static_cast<unsigned char>(l * 255.f); // achromatic
+    }
+    else
+    {
+        const float q = l < 0.5f ? l * (1 + s) : l + s - l * s;
+        const float p = 2.f * l - q;
+        r = static_cast<unsigned char>(hue2rgb(p, q, h + 1.f / 3.f) * 255.f);
+        g = static_cast<unsigned char>(hue2rgb(p, q, h) * 255.f);
+        b = static_cast<unsigned char>(hue2rgb(p, q, h - 1.f / 3.f) * 255.f);
+    }
 }
 
-int aliceVision_main(int argc, char ** argv)
+int aliceVision_main(int argc, char** argv)
 {
-  // command-line parameters
+    // command-line parameters
 
-  std::string verboseLevel = system::EVerboseLevel_enumToString(system::Logger::getDefaultVerboseLevel());
-  std::string sfmDataFilename;
-  std::string outputFolder;
-  std::vector<std::string> featuresFolders;
-  std::vector<std::string> matchesFolders;
+    std::string verboseLevel = system::EVerboseLevel_enumToString(system::Logger::getDefaultVerboseLevel());
+    std::string sfmDataFilename;
+    std::string outputFolder;
+    std::vector<std::string> featuresFolders;
+    std::vector<std::string> matchesFolders;
 
-  // user optional parameters
+    // user optional parameters
 
-  std::string describerTypesName = EImageDescriberType_enumToString(EImageDescriberType::SIFT);
+    std::string describerTypesName = EImageDescriberType_enumToString(EImageDescriberType::SIFT);
 
-  po::options_description allParams("AliceVision exportMatches");
+    po::options_description allParams("AliceVision exportMatches");
 
-  po::options_description requiredParams("Required parameters");
-  requiredParams.add_options()
-    ("input,i", po::value<std::string>(&sfmDataFilename)->required(),
-      "SfMData file.")
-    ("output,o", po::value<std::string>(&outputFolder)->required(),
-      "Output path for matches.")
-    ("featuresFolders,f", po::value<std::vector<std::string>>(&featuresFolders)->multitoken()->required(),
-      "Path to folder(s) containing the extracted features.")
-    ("matchesFolders,m", po::value<std::vector<std::string>>(&matchesFolders)->multitoken()->required(),
-      "Path to folder(s) in which computed matches are stored.");
+    po::options_description requiredParams("Required parameters");
+    requiredParams.add_options()("input,i", po::value<std::string>(&sfmDataFilename)->required(), "SfMData file.")(
+        "output,o", po::value<std::string>(&outputFolder)->required(), "Output path for matches.")(
+        "featuresFolders,f", po::value<std::vector<std::string>>(&featuresFolders)->multitoken()->required(),
+        "Path to folder(s) containing the extracted features.")(
+        "matchesFolders,m", po::value<std::vector<std::string>>(&matchesFolders)->multitoken()->required(),
+        "Path to folder(s) in which computed matches are stored.");
 
-  po::options_description optionalParams("Optional parameters");
-  optionalParams.add_options()
-    ("describerTypes,d", po::value<std::string>(&describerTypesName)->default_value(describerTypesName),
-      EImageDescriberType_informations().c_str());
+    po::options_description optionalParams("Optional parameters");
+    optionalParams.add_options()("describerTypes,d",
+                                 po::value<std::string>(&describerTypesName)->default_value(describerTypesName),
+                                 EImageDescriberType_informations().c_str());
 
-  po::options_description logParams("Log parameters");
-  logParams.add_options()
-    ("verboseLevel,v", po::value<std::string>(&verboseLevel)->default_value(verboseLevel),
-      "verbosity level (fatal,  error, warning, info, debug, trace).");
+    po::options_description logParams("Log parameters");
+    logParams.add_options()("verboseLevel,v", po::value<std::string>(&verboseLevel)->default_value(verboseLevel),
+                            "verbosity level (fatal,  error, warning, info, debug, trace).");
 
-  allParams.add(requiredParams).add(optionalParams).add(logParams);
+    allParams.add(requiredParams).add(optionalParams).add(logParams);
 
-  po::variables_map vm;
-  try
-  {
-    po::store(po::parse_command_line(argc, argv, allParams), vm);
-
-    if(vm.count("help") || (argc == 1))
+    po::variables_map vm;
+    try
     {
-      ALICEVISION_COUT(allParams);
-      return EXIT_SUCCESS;
+        po::store(po::parse_command_line(argc, argv, allParams), vm);
+
+        if(vm.count("help") || (argc == 1))
+        {
+            ALICEVISION_COUT(allParams);
+            return EXIT_SUCCESS;
+        }
+        po::notify(vm);
     }
-    po::notify(vm);
-  }
-  catch(boost::program_options::required_option& e)
-  {
-    ALICEVISION_CERR("ERROR: " << e.what());
-    ALICEVISION_COUT("Usage:\n\n" << allParams);
-    return EXIT_FAILURE;
-  }
-  catch(boost::program_options::error& e)
-  {
-    ALICEVISION_CERR("ERROR: " << e.what());
-    ALICEVISION_COUT("Usage:\n\n" << allParams);
-    return EXIT_FAILURE;
-  }
-
-  ALICEVISION_COUT("Program called with the following parameters:");
-  ALICEVISION_COUT(vm);
-
-  // set verbose level
-  system::Logger::get()->setLogLevel(verboseLevel);
-
-  if (outputFolder.empty())
-  {
-    ALICEVISION_LOG_ERROR("It is an invalid output folder");
-    return EXIT_FAILURE;
-  }
-
-  // read SfM Scene (image view names)
-  SfMData sfmData;
-  if(!sfmDataIO::Load(sfmData, sfmDataFilename, sfmDataIO::ESfMData(sfmDataIO::VIEWS|sfmDataIO::INTRINSICS)))
-  {
-    ALICEVISION_LOG_ERROR("The input SfMData file '"<< sfmDataFilename << "' cannot be read.");
-    return EXIT_FAILURE;
-  }
-
-  // load SfM Scene regions
-
-  // get imageDescriberMethodType
-  std::vector<EImageDescriberType> describerMethodTypes = EImageDescriberType_stringToEnums(describerTypesName);
-
-  // read the features
-  feature::FeaturesPerView featuresPerView;
-  if(!sfm::loadFeaturesPerView(featuresPerView, sfmData, featuresFolders, describerMethodTypes))
-  {
-    ALICEVISION_LOG_ERROR("Invalid features file");
-    return EXIT_FAILURE;
-  }
-
-  // read matches
-  matching::PairwiseMatches pairwiseMatches;
-  if(!sfm::loadPairwiseMatches(pairwiseMatches, sfmData, matchesFolders, describerMethodTypes))
-  {
-    ALICEVISION_LOG_ERROR("Invalid matches file");
-    return EXIT_FAILURE;
-  }
-
-  // for each pair, export the matches
-
-  fs::create_directory(outputFolder);
-  ALICEVISION_LOG_INFO("Export pairwise matches");
-  const PairSet pairs = matching::getImagePairs(pairwiseMatches);
-  boost::progress_display myProgressBar(pairs.size());
-  for (PairSet::const_iterator iter = pairs.begin(); iter != pairs.end(); ++iter, ++myProgressBar)
-  {
-    const std::size_t I = iter->first;
-    const std::size_t J = iter->second;
-
-    const View* viewI = sfmData.getViews().at(I).get();
-    const View* viewJ = sfmData.getViews().at(J).get();
-
-    const std::string viewImagePathI= viewI->getImagePath();
-    const std::string viewImagePathJ= viewJ->getImagePath();
-
-    std::string destFilename_I;
-    std::string destFilename_J;
+    catch(boost::program_options::required_option& e)
     {
-    boost::filesystem::path origImgPath(viewImagePathI);
-    std::string origFilename = origImgPath.stem().string();
-    image::Image<image::RGBfColor> originalImage;
-    image::readImage(viewImagePathI, originalImage, image::EImageColorSpace::LINEAR);
-    destFilename_I = (fs::path(outputFolder) / (origFilename + ".png")).string();
-    image::writeImage(destFilename_I, originalImage, image::EImageColorSpace::SRGB);
+        ALICEVISION_CERR("ERROR: " << e.what());
+        ALICEVISION_COUT("Usage:\n\n" << allParams);
+        return EXIT_FAILURE;
+    }
+    catch(boost::program_options::error& e)
+    {
+        ALICEVISION_CERR("ERROR: " << e.what());
+        ALICEVISION_COUT("Usage:\n\n" << allParams);
+        return EXIT_FAILURE;
     }
 
+    ALICEVISION_COUT("Program called with the following parameters:");
+    ALICEVISION_COUT(vm);
+
+    // set verbose level
+    system::Logger::get()->setLogLevel(verboseLevel);
+
+    if(outputFolder.empty())
     {
-    boost::filesystem::path origImgPath(viewImagePathJ);
-    std::string origFilename = origImgPath.stem().string();
-    image::Image<image::RGBfColor> originalImage;
-    image::readImage(viewImagePathJ, originalImage, image::EImageColorSpace::LINEAR);
-    destFilename_J = (fs::path(outputFolder) / (origFilename + ".png")).string();
-    image::writeImage(destFilename_J, originalImage, image::EImageColorSpace::SRGB);
+        ALICEVISION_LOG_ERROR("It is an invalid output folder");
+        return EXIT_FAILURE;
     }
 
-    const std::pair<size_t, size_t> dimImageI = std::make_pair(viewI->getWidth(), viewI->getHeight());
-    const std::pair<size_t, size_t> dimImageJ = std::make_pair(viewJ->getWidth(), viewJ->getHeight());
-
-    svgDrawer svgStream(dimImageI.first + dimImageJ.first, std::max(dimImageI.second, dimImageJ.second));
-
-    svgStream.drawImage(destFilename_I, dimImageI.first, dimImageI.second);
-    svgStream.drawImage(destFilename_J, dimImageJ.first, dimImageJ.second, dimImageI.first);
-
-    const matching::MatchesPerDescType& filteredMatches = pairwiseMatches.at(*iter);
-
-    ALICEVISION_LOG_INFO("nb describer: " << filteredMatches.size());
-
-    if(filteredMatches.empty())
-      continue;
-
-    for(const auto& matchesIt: filteredMatches)
+    // read SfM Scene (image view names)
+    SfMData sfmData;
+    if(!sfmDataIO::Load(sfmData, sfmDataFilename, sfmDataIO::ESfMData(sfmDataIO::VIEWS | sfmDataIO::INTRINSICS)))
     {
-      const feature::EImageDescriberType descType = matchesIt.first;
-      assert(descType != feature::EImageDescriberType::UNINITIALIZED);
-      const matching::IndMatches& matches = matchesIt.second;
-      ALICEVISION_LOG_INFO(EImageDescriberType_enumToString(matchesIt.first) << ": " << matches.size() << " matches");
-
-      const PointFeatures& featuresI = featuresPerView.getFeatures(viewI->getViewId(), descType);
-      const PointFeatures& featuresJ = featuresPerView.getFeatures(viewJ->getViewId(), descType);
-
-      // draw link between features :
-      for(std::size_t i = 0; i < matches.size(); ++i)
-      {
-        const PointFeature& imaA = featuresI[matches[i]._i];
-        const PointFeature& imaB = featuresJ[matches[i]._j];
-
-        // compute a flashy colour for the correspondence
-        unsigned char r,g,b;
-        hslToRgb( (rand() % 360) / 360., 1.0, .5, r, g, b);
-        std::ostringstream osCol;
-        osCol << "rgb(" << (int)r <<',' << (int)g << ',' << (int)b <<")";
-        svgStream.drawLine(imaA.x(), imaA.y(),
-          imaB.x()+dimImageI.first, imaB.y(), svgStyle().stroke(osCol.str(), 2.0));
-      }
-
-      const std::string featColor = describerTypeColor(descType);
-      // draw features (in two loop, in order to have the features upper the link, svg layer order):
-      for(std::size_t i=0; i< matches.size(); ++i)
-      {
-        const PointFeature& imaA = featuresI[matches[i]._i];
-        const PointFeature& imaB = featuresJ[matches[i]._j];
-        svgStream.drawCircle(imaA.x(), imaA.y(), 5.0,
-          svgStyle().stroke(featColor, 2.0));
-        svgStream.drawCircle(imaB.x() + dimImageI.first, imaB.y(), 5.0,
-          svgStyle().stroke(featColor, 2.0));
-      }
+        ALICEVISION_LOG_ERROR("The input SfMData file '" << sfmDataFilename << "' cannot be read.");
+        return EXIT_FAILURE;
     }
 
-    fs::path outputFilename = fs::path(outputFolder) / std::string(std::to_string(iter->first) + "_" + std::to_string(iter->second) + "_" + std::to_string(filteredMatches.getNbAllMatches()) + ".svg");
-    std::ofstream svgFile(outputFilename.string());
-    svgFile << svgStream.closeSvgFile().str();
-    svgFile.close();
-  }
-  return EXIT_SUCCESS;
+    // load SfM Scene regions
+
+    // get imageDescriberMethodType
+    std::vector<EImageDescriberType> describerMethodTypes = EImageDescriberType_stringToEnums(describerTypesName);
+
+    // read the features
+    feature::FeaturesPerView featuresPerView;
+    if(!sfm::loadFeaturesPerView(featuresPerView, sfmData, featuresFolders, describerMethodTypes))
+    {
+        ALICEVISION_LOG_ERROR("Invalid features file");
+        return EXIT_FAILURE;
+    }
+
+    // read the features
+    feature::RegionsPerView regionPerView;
+    std::set<IndexT> filter;
+    if (!sfm::loadRegionsPerView(regionPerView, sfmData, featuresFolders, describerMethodTypes, filter))
+    {
+        ALICEVISION_THROW_ERROR("Error while loading markers regions.");
+    }
+
+    // read matches
+    matching::PairwiseMatches pairwiseMatches;
+    if(!sfm::loadPairwiseMatches(pairwiseMatches, sfmData, matchesFolders, describerMethodTypes))
+    {
+        ALICEVISION_LOG_ERROR("Invalid matches file");
+        return EXIT_FAILURE;
+    }
+
+    // for each pair, export the matches
+
+    fs::create_directory(outputFolder);
+
+
+ /*   ALICEVISION_LOG_INFO("Export pairwise matches");
+    const PairSet pairs = matching::getImagePairs(pairwiseMatches);
+    boost::progress_display myProgressBar(pairs.size());
+    for(PairSet::const_iterator iter = pairs.begin(); iter != pairs.end(); ++iter, ++myProgressBar)
+    {
+        const std::size_t I = iter->first;
+        const std::size_t J = iter->second;
+
+        const View* viewI = sfmData.getViews().at(I).get();
+        const View* viewJ = sfmData.getViews().at(J).get();
+
+        const std::string viewImagePathI = viewI->getImagePath();
+        const std::string viewImagePathJ = viewJ->getImagePath();
+
+        std::string destFilename_I;
+        std::string destFilename_J;
+        {
+            boost::filesystem::path origImgPath(viewImagePathI);
+            std::string origFilename = origImgPath.stem().string();
+            image::Image<image::RGBfColor> originalImage;
+            image::readImage(viewImagePathI, originalImage, image::EImageColorSpace::LINEAR);
+            destFilename_I = (fs::path(outputFolder) / (origFilename + ".png")).string();
+            image::writeImage(destFilename_I, originalImage, image::EImageColorSpace::SRGB);
+        }
+
+        {
+            boost::filesystem::path origImgPath(viewImagePathJ);
+            std::string origFilename = origImgPath.stem().string();
+            image::Image<image::RGBfColor> originalImage;
+            image::readImage(viewImagePathJ, originalImage, image::EImageColorSpace::LINEAR);
+            destFilename_J = (fs::path(outputFolder) / (origFilename + ".png")).string();
+            image::writeImage(destFilename_J, originalImage, image::EImageColorSpace::SRGB);
+        }
+
+        const std::pair<size_t, size_t> dimImageI = std::make_pair(viewI->getWidth(), viewI->getHeight());
+        const std::pair<size_t, size_t> dimImageJ = std::make_pair(viewJ->getWidth(), viewJ->getHeight());
+
+        svgDrawer svgStream(dimImageI.first + dimImageJ.first, std::max(dimImageI.second, dimImageJ.second));
+
+        svgStream.drawImage(destFilename_I, dimImageI.first, dimImageI.second);
+        svgStream.drawImage(destFilename_J, dimImageJ.first, dimImageJ.second, dimImageI.first);
+
+        const matching::MatchesPerDescType& filteredMatches = pairwiseMatches.at(*iter);
+
+        ALICEVISION_LOG_INFO("nb describer: " << filteredMatches.size());
+
+        if(filteredMatches.empty())
+            continue;
+
+        for(const auto& matchesIt : filteredMatches)
+        {
+            const feature::EImageDescriberType descType = matchesIt.first;
+            assert(descType != feature::EImageDescriberType::UNINITIALIZED);
+            const matching::IndMatches& matches = matchesIt.second;
+            ALICEVISION_LOG_INFO(EImageDescriberType_enumToString(matchesIt.first) << ": " << matches.size() << " matches");
+
+            const PointFeatures& featuresI = featuresPerView.getFeatures(viewI->getViewId(), descType);
+            const PointFeatures& featuresJ = featuresPerView.getFeatures(viewJ->getViewId(), descType);
+
+            // draw link between features :
+            for(std::size_t i = 0; i < matches.size(); ++i)
+            {
+                const PointFeature& imaA = featuresI[matches[i]._i];
+                const PointFeature& imaB = featuresJ[matches[i]._j];
+
+                // compute a flashy colour for the correspondence
+                unsigned char r, g, b;
+                hslToRgb((rand() % 360) / 360., 1.0, .5, r, g, b);
+                std::ostringstream osCol;
+                osCol << "rgb(" << (int)r << ',' << (int)g << ',' << (int)b << ")";
+                svgStream.drawLine(imaA.x(), imaA.y(), imaB.x() + dimImageI.first, imaB.y(), svgStyle().stroke(osCol.str(), 2.0));
+            }
+
+            const std::string featColor = describerTypeColor(descType);
+            // draw features (in two loop, in order to have the features upper the link, svg layer order):
+            for(std::size_t i = 0; i < matches.size(); ++i)
+            {
+                const PointFeature& imaA = featuresI[matches[i]._i];
+                const PointFeature& imaB = featuresJ[matches[i]._j];
+                svgStream.drawCircle(imaA.x(), imaA.y(), 5.0, svgStyle().stroke(featColor, 2.0));
+                svgStream.drawCircle(imaB.x() + dimImageI.first, imaB.y(), 5.0, svgStyle().stroke(featColor, 2.0));
+            }
+        }
+
+        fs::path outputFilename = fs::path(outputFolder) / std::string(std::to_string(iter->first) + "_" + std::to_string(iter->second) + "_" + std::to_string(filteredMatches.getNbAllMatches()) + ".svg");
+        std::ofstream svgFile(outputFilename.string());
+        svgFile << svgStream.closeSvgFile().str();
+        svgFile.close();
+    }
+*/
+
+    // for each image, export visually the keypoints
+    ALICEVISION_LOG_INFO("Export HDF5");
+    {
+        using namespace H5;
+
+        fs::path featuresFilename = fs::path(outputFolder) / "keypoints.h5";
+        fs::path descsFilename = fs::path(outputFolder) / "descriptors.h5";
+        fs::path matchesFilename = fs::path(outputFolder) / "matches-stereo.h5";
+
+        H5File featuresfile(featuresFilename.string(), H5F_ACC_TRUNC);
+        H5File descriptorsfile(descsFilename.string(), H5F_ACC_TRUNC);
+        H5File matchesfile(matchesFilename.string(), H5F_ACC_TRUNC);
+        
+
+        for(const auto &iterViews : sfmData.views)
+        {
+            const View * view = iterViews.second.get();
+            const std::string viewImagePath = view->getImagePath();
+
+            std::string name = fs::path(viewImagePath).stem().string();
+            
+            
+            const MapRegionsPerDesc& regionsAllDesc = regionPerView.getData().at(view->getViewId());
+            if (regionsAllDesc.size() != 1)
+            {
+                ALICEVISION_LOG_ERROR("Only one descriptor type allowed");
+                continue;
+            }
+            
+            
+            const auto & regions = regionsAllDesc.begin()->second;
+            size_t count = regions->RegionCount();
+                
+            
+            
+            {
+                Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> coordinates(count, 2);
+
+                size_t pos = 0;
+                for (auto feature : regions->Features())
+                {
+                    coordinates(pos, 0) = feature.x();
+                    coordinates(pos, 1) = feature.y();
+                    pos++;
+                }
+            
+                hsize_t dimsf[2]; // dataset dimensions
+                dimsf[0] = count;
+                dimsf[1] = 2;
+                DataSpace dataspace(2, dimsf);
+                FloatType datatype(PredType::NATIVE_FLOAT);
+                DataSet dataset = featuresfile.createDataSet(name, datatype, dataspace);
+                dataset.write(coordinates.data(), PredType::NATIVE_FLOAT);
+            }
+            
+
+            SIFT_Regions * fdregions = dynamic_cast<SIFT_Regions*>(regions.get());
+            if (fdregions)
+            {
+                const auto & descriptors = fdregions->Descriptors();
+
+                Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> descriptions(count, fdregions->DescriptorLength());
+
+                size_t pos = 0;
+                for (auto desc : descriptors)
+                {
+                    for (int j = 0; j < desc.size(); j++)
+                    {
+                        descriptions(pos, j) = desc[j];
+                    }
+                    pos++;
+                }
+            
+                hsize_t dimsf[2]; // dataset dimensions
+                dimsf[0] = descriptions.rows();
+                dimsf[1] = descriptions.cols();
+                DataSpace dataspace(2, dimsf);
+                FloatType datatype(PredType::NATIVE_FLOAT);
+                DataSet dataset = descriptorsfile.createDataSet(name, datatype, dataspace);
+                dataset.write(descriptions.data(), PredType::NATIVE_FLOAT);
+            }
+        }
+
+        for (const auto & pfirstView : sfmData.views)
+        {
+            const View * firstView = pfirstView.second.get();
+            IndexT firstid = firstView->getViewId();
+
+            std::string firstname = fs::path(firstView->getImagePath()).stem().string();
+
+            for (const auto & psecondView : sfmData.views)
+            {
+                const View * secondView = psecondView.second.get();
+                IndexT secondid = secondView->getViewId();
+
+                if (secondid >= firstid) continue;
+
+                std::string secondname = fs::path(secondView->getImagePath()).stem().string();
+                std::string name = firstname + "-" + secondname;
+
+                Pair p = std::make_pair(secondid, firstid);
+
+                const matching::MatchesPerDescType & matchespdt = pairwiseMatches[p];
+                size_t count = matchespdt.getNbAllMatches();
+
+                Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> outmatches(2, count);
+
+                if (count > 0)
+                {
+                    const IndMatches & matches = matchespdt.begin()->second;
+
+                    for (int i = 0; i < matches.size(); i++)
+                    {
+                        outmatches(0, i) = matches[i]._i;
+                        outmatches(1, i) = matches[i]._j;
+                    }
+                }
+
+
+                hsize_t dimsf[2]; // dataset dimensions
+                dimsf[0] = outmatches.rows();
+                dimsf[1] = outmatches.cols();
+                DataSpace dataspace(2, dimsf);
+                IntType datatype(PredType::NATIVE_INT32);
+                DataSet dataset = matchesfile.createDataSet(name, datatype, dataspace);
+                dataset.write(outmatches.data(), PredType::NATIVE_INT32);
+            }
+        }
+    }
+
+    
+    
+    return EXIT_SUCCESS;
 }

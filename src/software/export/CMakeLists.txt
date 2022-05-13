@@ -4,6 +4,12 @@
 # Software PROPERTY FOLDER is 'Software/Export'
 set(FOLDER_SOFTWARE_EXPORT "Software/Export")
 
+find_package(HDF5 COMPONENTS C CXX) 
+if (HDF5_FOUND)
+  include_directories(${HDF5_INCLUDE_DIRS})
+  set(hdf5_libs ${HDF5_CXX_LIBRARIES})
+endif()
+
 if(ALICEVISION_BUILD_SFM)
 # Export an alembic animated camera from a SfMData file
 if(ALICEVISION_HAVE_ALEMBIC)
@@ -39,6 +45,7 @@ alicevision_add_software(aliceVision_exportKeypoints
 alicevision_add_software(aliceVision_exportMatches
   SOURCE main_exportMatches.cpp
   FOLDER ${FOLDER_SOFTWARE_EXPORT}
+  INCLUDE_DIRS ${hdf5_INCLUDE_DIRS}
   LINKS aliceVision_system
         aliceVision_feature
         aliceVision_sfm
@@ -48,7 +55,9 @@ alicevision_add_software(aliceVision_exportMatches
         Boost::filesystem
         Boost::boost
         Boost::timer
+        ${hdf5_libs}
 )
+
 
 # Export view tracks per image pair
 alicevision_add_software(aliceVision_exportTracks
@@ -64,6 +73,7 @@ alicevision_add_software(aliceVision_exportTracks
         Boost::boost
         Boost::timer
 )
+
 
 # Export a SfM aliceVision scene to PMVS format
 alicevision_add_software(aliceVision_exportPMVS

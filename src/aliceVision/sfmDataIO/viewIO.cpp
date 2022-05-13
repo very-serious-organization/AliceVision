@@ -288,7 +288,7 @@ bool extractNumberFromFileStem(const std::string& imagePathStem, IndexT& number,
     {
         prefix = matches[1];
         suffix = matches[3];
-        number = static_cast<IndexT>(std::stoi(matches[2]));
+        number = static_cast<IndexT>(std::stol(matches[2]));
     }
 
     return containsNumber;
