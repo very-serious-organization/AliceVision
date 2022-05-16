@@ -343,22 +343,8 @@ int aliceVision_main(int argc, char** argv)
             }
             
 
-            SIFT_Regions * fdregions = dynamic_cast<SIFT_Regions*>(regions.get());
-            if (fdregions)
             {
-                const auto & descriptors = fdregions->Descriptors();
-
-                Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> descriptions(count, fdregions->DescriptorLength());
-
-                size_t pos = 0;
-                for (auto desc : descriptors)
-                {
-                    for (int j = 0; j < desc.size(); j++)
-                    {
-                        descriptions(pos, j) = desc[j];
-                    }
-                    pos++;
-                }
+                Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> descriptions = regions->getDescriptorsMatrix();
             
                 hsize_t dimsf[2]; // dataset dimensions
                 dimsf[0] = descriptions.rows();

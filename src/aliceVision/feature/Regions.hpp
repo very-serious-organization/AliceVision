@@ -117,6 +117,13 @@ public:
    */
   virtual const void * DescriptorRawData() const = 0;
 
+  /**
+   * @brief Get the Descriptors Matrix object
+   * 
+   * @return Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> 
+   */
+  virtual Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> getDescriptorsMatrix() = 0;
+
   virtual void clearDescriptors() = 0;
 
   /// Return the squared distance between two descriptors
@@ -285,6 +292,25 @@ public:
       out_associated3dPoint.push_back(feat._point3dId);
     }
     return regions;
+  }
+
+  virtual Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> getDescriptorsMatrix()
+  {
+    const std::vector<DescriptorT> & descriptors = Descriptors();
+
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> descriptions(RegionCount(), DescriptorLength());
+
+    size_t pos = 0;
+    for (const DescriptorT & desc : descriptors)
+    {
+        for (int j = 0; j < desc.size(); j++)
+        {
+            descriptions(pos, j) = static_cast<float>(desc[j]);
+        }
+        pos++;
+    }
+
+    return descriptions;
   }
 };
 
