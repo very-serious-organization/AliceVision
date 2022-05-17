@@ -123,6 +123,11 @@ public:
          _params.options.maxTotalKeypoints = 5000;
          break;
       }
+      case EImageDescriberPreset::BENCHMARK:
+      {
+         _params.options.maxTotalKeypoints = 8000;
+         break;
+      }
       case EImageDescriberPreset::MEDIUM:
       {
          _params.options.maxTotalKeypoints = 10000;

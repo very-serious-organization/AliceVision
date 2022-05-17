@@ -294,7 +294,7 @@ int aliceVision_main(int argc, char** argv)
 
         fs::path featuresFilename = fs::path(outputFolder) / "keypoints.h5";
         fs::path descsFilename = fs::path(outputFolder) / "descriptors.h5";
-        fs::path matchesFilename = fs::path(outputFolder) / "matches-stereo.h5";
+        fs::path matchesFilename = fs::path(outputFolder) / "matches_stereo.h5";
 
         H5File featuresfile(featuresFilename.string(), H5F_ACC_TRUNC);
         H5File descriptorsfile(descsFilename.string(), H5F_ACC_TRUNC);
@@ -368,9 +368,9 @@ int aliceVision_main(int argc, char** argv)
                 const View * secondView = psecondView.second.get();
                 IndexT secondid = secondView->getViewId();
 
-                if (secondid >= firstid) continue;
-
                 std::string secondname = fs::path(secondView->getImagePath()).stem().string();
+
+                if (secondname == firstname) continue;
                 std::string name = firstname + "-" + secondname;
 
                 Pair p = std::make_pair(secondid, firstid);

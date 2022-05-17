@@ -25,6 +25,7 @@ namespace feature {
 enum class EImageDescriberPreset
 {
   LOW = 0
+  , BENCHMARK
   , MEDIUM
   , NORMAL
   , HIGH
@@ -62,6 +63,7 @@ inline std::string EFeatureQuality_information()
 {
     return "Feature extraction contains a trade-off between speed and result accuracy:\n"
            "* LOW: Very quick results.\n"
+           "* BENCHMARK: IMC Compatible preset.\n"
            "* MEDIUM: Quick results.\n"
            "* NORMAL: Default feature quality.\n"
            "* HIGH: Improved quality over performances.\n"

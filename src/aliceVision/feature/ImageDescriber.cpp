@@ -44,6 +44,7 @@ EImageDescriberPreset EImageDescriberPreset_stringToEnum(const std::string& imag
   std::transform(preset.begin(), preset.end(), preset.begin(), ::tolower); //tolower
 
   if(preset == "low")    return EImageDescriberPreset::LOW;
+  if(preset == "benchmark") return EImageDescriberPreset::BENCHMARK;
   if(preset == "medium") return EImageDescriberPreset::MEDIUM;
   if(preset == "normal") return EImageDescriberPreset::NORMAL;
   if(preset == "high")   return EImageDescriberPreset::HIGH;
@@ -55,6 +56,7 @@ EImageDescriberPreset EImageDescriberPreset_stringToEnum(const std::string& imag
 std::string EImageDescriberPreset_enumToString(const EImageDescriberPreset imageDescriberPreset)
 {
   if(imageDescriberPreset == EImageDescriberPreset::LOW)    return "low";
+  if(imageDescriberPreset == EImageDescriberPreset::BENCHMARK)    return "benchmark";
   if(imageDescriberPreset == EImageDescriberPreset::MEDIUM) return "medium";
   if(imageDescriberPreset == EImageDescriberPreset::NORMAL) return "normal";
   if(imageDescriberPreset == EImageDescriberPreset::HIGH)   return "high";

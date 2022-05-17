@@ -30,6 +30,10 @@ void SIFT_openCV_Params::setConfigurationPreset(EImageDescriberPreset preset)
         contrastThreshold = 0.005;
         maxTotalKeypoints = 5000;
       break;
+      case EImageDescriberPreset::BENCHMARK:
+        contrastThreshold = 0.005;
+        maxTotalKeypoints = 8000;
+      break;
       case EImageDescriberPreset::NORMAL:
         contrastThreshold = 0.005;
         edgeThreshold = 15;

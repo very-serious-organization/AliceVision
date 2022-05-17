@@ -35,6 +35,7 @@ bool ImageDescriber_CCTAG::CCTagParameters::setPreset(EImageDescriberPreset pres
   {
   // Normal lighting conditions: normal contrast
   case EImageDescriberPreset::LOW:
+  case EImageDescriberPreset::BENCHMARK:
   case EImageDescriberPreset::MEDIUM:
   case EImageDescriberPreset::NORMAL:
     _cannyThrLow = 0.01f;
