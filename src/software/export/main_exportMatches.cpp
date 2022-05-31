@@ -294,7 +294,7 @@ int aliceVision_main(int argc, char** argv)
 
         fs::path featuresFilename = fs::path(outputFolder) / "keypoints.h5";
         fs::path descsFilename = fs::path(outputFolder) / "descriptors.h5";
-        fs::path matchesFilename = fs::path(outputFolder) / "matches_stereo.h5";
+        fs::path matchesFilename = fs::path(outputFolder) / "matches.h5";
 
         H5File featuresfile(featuresFilename.string(), H5F_ACC_TRUNC);
         H5File descriptorsfile(descsFilename.string(), H5F_ACC_TRUNC);
@@ -373,8 +373,7 @@ int aliceVision_main(int argc, char** argv)
                 if (secondname == firstname) continue;
                 std::string name = firstname + "-" + secondname;
 
-                Pair p = std::make_pair(secondid, firstid);
-
+                Pair p = std::make_pair(firstid, secondid);
                 const matching::MatchesPerDescType & matchespdt = pairwiseMatches[p];
                 size_t count = matchespdt.getNbAllMatches();
 
@@ -388,6 +387,24 @@ int aliceVision_main(int argc, char** argv)
                     {
                         outmatches(0, i) = matches[i]._i;
                         outmatches(1, i) = matches[i]._j;
+                    }
+                }
+                else
+                {
+                    Pair p = std::make_pair(secondid, firstid);
+                    const matching::MatchesPerDescType & matchespdt = pairwiseMatches[p];
+                    size_t count = matchespdt.getNbAllMatches();
+
+                    outmatches = Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>(2, count);
+                    if (count > 0)
+                    {
+                        const IndMatches & matches = matchespdt.begin()->second;
+
+                        for (int i = 0; i < matches.size(); i++)
+                        {
+                            outmatches(0, i) = matches[i]._j;
+                            outmatches(1, i) = matches[i]._i;
+                        }
                     }
                 }
 
