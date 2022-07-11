@@ -24,6 +24,7 @@
 #include <set>
 #include <iterator>
 #include <iomanip>
+#include <fstream>
 
 // These constants define the current software version.
 // They must be updated when the command line is changed.
@@ -140,8 +141,8 @@ bool prepareDenseScene(const SfMData& sfmData,
   boost::progress_display progressBar(viewIds.size(), std::cout, "Exporting Scene Undistorted Images\n");
 
   // for exposure correction
-  const float medianCameraExposure = sfmData.getMedianCameraExposureSetting();
-  ALICEVISION_LOG_INFO("Median Camera Exposure: " << medianCameraExposure << ", Median EV: " << std::log2(1.0f/medianCameraExposure));
+  const double medianCameraExposure = sfmData.getMedianCameraExposureSetting().getExposure();
+  ALICEVISION_LOG_INFO("Median Camera Exposure: " << medianCameraExposure << ", Median EV: " << std::log2(1.0/medianCameraExposure));
 
 #pragma omp parallel for num_threads(3)
   for(int i = 0; i < viewIds.size(); ++i)
@@ -255,16 +256,15 @@ bool prepareDenseScene(const SfMData& sfmData,
       const IntrinsicBase* cam = iterIntrinsic->second.get();
 
       // add exposure values to images metadata
-      float cameraExposure = view->getCameraExposureSetting();
-      float ev = std::log2(1.0 / cameraExposure);
-      float exposureCompensation = medianCameraExposure / cameraExposure;
-      metadata.push_back(oiio::ParamValue("AliceVision:EV", ev));
+      const double cameraExposure = view->getCameraExposureSetting().getExposure();
+      const double ev = std::log2(1.0 / cameraExposure);
+      const float exposureCompensation = float(medianCameraExposure / cameraExposure);
+      metadata.push_back(oiio::ParamValue("AliceVision:EV", float(ev)));
       metadata.push_back(oiio::ParamValue("AliceVision:EVComp", exposureCompensation));
 
       if(evCorrection)
       {
-          ALICEVISION_LOG_INFO("image " + std::to_string(viewId) + " Ev : " + std::to_string(ev));
-          ALICEVISION_LOG_INFO("image " + std::to_string(viewId) + " Ev compensation : " + std::to_string(exposureCompensation));
+          ALICEVISION_LOG_INFO("image " << viewId << ", exposure: " << cameraExposure << ", Ev " << ev << " Ev compensation: " + std::to_string(exposureCompensation));
       }
 
       image::Image<unsigned char> mask;
@@ -287,8 +287,8 @@ bool prepareDenseScene(const SfMData& sfmData,
       }
       else
       {
-        const auto noMaskingFunc = [] (Image<RGBfColor> & image) {};
-        process<Image<RGBfColor>>(dstColorImage, cam, metadata, srcImage, evCorrection, exposureCompensation, noMaskingFunc);
+        const auto noMaskingFunc = [] (Image<RGBAfColor> & image) {};
+        process<Image<RGBAfColor>>(dstColorImage, cam, metadata, srcImage, evCorrection, exposureCompensation, noMaskingFunc);
       }
     }
 
