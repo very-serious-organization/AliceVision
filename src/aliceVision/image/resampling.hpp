@@ -47,7 +47,7 @@ namespace image {
   }
 
   template <typename SamplerType, typename Image>
-  void downscaleImage(const Image& src, Image& out, float downscale)
+  void downscaleImage(const Image& src, Image& out, int downscale)
   {
       const int new_width = src.Width() / downscale;
       const int new_height = src.Height() / downscale;
@@ -67,7 +67,7 @@ namespace image {
   }
 
   template <typename ImageType>
-  void downscaleImageInplace(ImageType& inout, float downscale)
+  void downscaleImageInplace(ImageType& inout, int downscale)
   {
       if(downscale <= 1)
           return;
