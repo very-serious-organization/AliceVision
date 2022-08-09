@@ -522,6 +522,6 @@ if(ALICEVISION_HAVE_OPENCV)
           aliceVision_sphereDetection
           Boost::program_options
           ${OpenCV_LIBRARIES}
-          onnxruntime
+          ${onnxruntime_LIBRARY}
     )
 endif()
