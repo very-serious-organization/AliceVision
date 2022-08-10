@@ -63,31 +63,34 @@ RUN cmake "${AV_DEV}" \
      -DCMAKE_INSTALL_PREFIX="${AV_INSTALL}"
 
 # Symlink lib64 to lib as qtOIIO expects to find OIIO in lib64
-RUN mkdir -p "${AV_INSTALL}/lib" && \
-        ln -s lib "${AV_INSTALL}/lib64"
+RUN mkdir -p "${AV_INSTALL}/include" && \
+	mkdir -p "${AV_INSTALL}/lib" && \
+    ln -s lib "${AV_INSTALL}/lib64"
 
 WORKDIR "${AV_BUILD}"
-#RUN make -j"$(nproc)" zlib
-#RUN make -j"$(nproc)" geogram
-#RUN make -j"$(nproc)" tbb
-#RUN make -j"$(nproc)" eigen
-#RUN make -j"$(nproc)" opengv
-#RUN make -j"$(nproc)" lapack
-
+# RUN make -j"$(nproc)" alembic
+# RUN make -j"$(nproc)" apriltag
+# RUN make -j"$(nproc)" assimp
+# RUN make -j"$(nproc)" boost
+# RUN make -j"$(nproc)" cctag
+# RUN make -j"$(nproc)" ceres
 RUN test -e /usr/local/cuda/lib64/libcublas.so || ln -s /usr/lib/x86_64-linux-gnu/libcublas.so /usr/local/cuda/lib64/libcublas.so
-#RUN make -j"$(nproc)" suitesparse
-#RUN make -j"$(nproc)" ceres
-#RUN make -j"$(nproc)" openexr
-#RUN make -j"$(nproc)" tiff
-#RUN make -j"$(nproc)" png
-#RUN make -j"$(nproc)" turbojpeg
-#RUN make -j"$(nproc)" libraw
-#RUN make -j"$(nproc)" boost
-#RUN make -j"$(nproc)" openimageio
-#RUN make -j"$(nproc)" alembic
-#RUN make -j"$(nproc)" popsift
-#RUN make -j"$(nproc)" opencv
-#RUN make -j"$(nproc)" cctag
+# RUN make -j"$(nproc)" eigen
+# RUN make -j"$(nproc)" geogram
+# RUN make -j"$(nproc)" lapack
+# RUN make -j"$(nproc)" libraw
+# RUN make -j"$(nproc)" onnxruntime
+# RUN make -j"$(nproc)" opencv
+# RUN make -j"$(nproc)" openexr
+# RUN make -j"$(nproc)" opengv
+# RUN make -j"$(nproc)" openimageio
+# RUN make -j"$(nproc)" png
+# RUN make -j"$(nproc)" popsift
+# RUN make -j"$(nproc)" suitesparse
+# RUN make -j"$(nproc)" tbb
+# RUN make -j"$(nproc)" tiff
+# RUN make -j"$(nproc)" turbojpeg
+# RUN make -j"$(nproc)" zlib
 
 RUN cmake --build . -j "$(nproc)" && \
     mv "${AV_INSTALL}/bin" "${AV_INSTALL}/bin-deps" && \
