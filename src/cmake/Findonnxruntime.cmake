@@ -1,19 +1,18 @@
 # This will define the following variables:
-#   onnxruntime_FOUND        -- True if the system has the onnxruntime library
-#   onnxruntime_INCLUDE_DIRS -- The include directories for onnxruntime
-#   onnxruntime_LIBRARIES    -- Libraries to link against
-#   onnxruntime_CXX_FLAGS    -- Additional (required) compiler flags
+# onnxruntime_FOUND        -- True if the system has the onnxruntime library
+# onnxruntime_INCLUDE_DIRS -- The include directories for onnxruntime
+# onnxruntime_LIBRARIES    -- Libraries to link against
+# onnxruntime_CXX_FLAGS    -- Additional (required) compiler flags
 
 include(FindPackageHandleStandardArgs)
 
 set(ONNXRUNTIME_SEARCH_PATHS
-    ${ONNXRUNTIME_INSTALL_PREFIX}                
+    ${ONNXRUNTIME_INSTALL_PREFIX}
     "$ENV{ONNXRUNTIME_INSTALL_PREFIX}"
     "/usr/local/"
 )
 
 find_path(onnxruntime_INSTALL_PREFIX
-    geogram/basic/common.h
     PATHS ${ONNXRUNTIME_SEARCH_PATHS}
 )
 
