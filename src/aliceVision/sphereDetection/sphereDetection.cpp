@@ -273,5 +273,5 @@ void sphereDetection(const aliceVision::sfmData::SfMData& sfmData, Ort::Session&
     }
 
     root.add_child("poses", poses);
-    bpt::write_json("/tmp/test.json", root);
+    bpt::write_json(output_path.append("detection.json").string(), root);
 }
