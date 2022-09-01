@@ -577,7 +577,7 @@ void writeImage(const std::string& path,
   if(!outBuf->write(tmpPath))
     throw std::runtime_error("Can't write output image file '" + path + "'.");
 
-  // rename temporay filename
+  // rename temporary filename
   fs::rename(tmpPath, path);
 }
 
@@ -625,7 +625,7 @@ void writeImageNoFloat(const std::string& path,
   if(!outBuf->write(tmpPath))
     throw std::runtime_error("Can't write output image file '" + path + "'.");
 
-  // rename temporay filename
+  // rename temporary filename
   fs::rename(tmpPath, path);
 }
 
@@ -707,6 +707,32 @@ void writeImage(const std::string& path, const Image<float>& image, EImageColorS
 void writeImage(const std::string& path, const Image<RGBColor>& image, EImageColorSpace imageColorSpace,const oiio::ParamValueList& metadata)
 {
   writeImage(path, oiio::TypeDesc::UINT8, 3, image, imageColorSpace, metadata);
+}
+
+bool tryLoadMask(Image<unsigned char>* mask, const std::vector<std::string>& masksFolders,
+                 const IndexT viewId, const std::string & srcImage)
+{
+    for (const auto & masksFolder_str : masksFolders)
+    {
+        if (!masksFolder_str.empty() && fs::exists(masksFolder_str))
+        {
+            const auto masksFolder = fs::path(masksFolder_str);
+            const auto idMaskPath = masksFolder / fs::path(std::to_string(viewId)).replace_extension("png");
+            const auto nameMaskPath = masksFolder / fs::path(srcImage).filename().replace_extension("png");
+
+            if (fs::exists(idMaskPath))
+            {
+                readImage(idMaskPath.string(), *mask, EImageColorSpace::LINEAR);
+                return true;
+            }
+            else if (fs::exists(nameMaskPath))
+            {
+                readImage(nameMaskPath.string(), *mask, EImageColorSpace::LINEAR);
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 }  // namespace image
