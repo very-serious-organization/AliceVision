@@ -10,7 +10,6 @@
 #include <aliceVision/system/Timer.hpp>
 #include <aliceVision/system/Logger.hpp>
 #include <aliceVision/system/cmdline.hpp>
-#include <pcl/console/parse.h>
 
 // These constants define the current software version.
 // They must be updated when the command line is changed.
