@@ -10,6 +10,7 @@
 #include <aliceVision/system/Logger.hpp>
 #include <aliceVision/system/cmdline.hpp>
 #include <aliceVision/system/main.hpp>
+#include <aliceVision/stl/regex.hpp>
 #include <aliceVision/config.hpp>
 #include <aliceVision/utils/regexFilter.hpp>
 
@@ -43,7 +44,7 @@ int aliceVision_main(int argc, char **argv)
 
   // user optional parameters
 
-  std::string describerTypesName = feature::EImageDescriberType_enumToString(feature::EImageDescriberType::SIFT);
+  std::string describerTypesName;
   std::vector<std::string> imageWhiteList;
   bool flagViews = true;
   bool flagIntrinsics = true;
@@ -121,12 +122,6 @@ int aliceVision_main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
-  if(describerTypesName.empty())
-  {
-    ALICEVISION_LOG_ERROR("--describerTypes option is empty.");
-    return EXIT_FAILURE;
-  }
-
   int flags = (flagViews   ? sfmDataIO::VIEWS        : 0)
        | (flagIntrinsics   ? sfmDataIO::INTRINSICS   : 0)
        | (flagExtrinsics   ? sfmDataIO::EXTRINSICS   : 0)
@@ -150,7 +145,7 @@ int aliceVision_main(int argc, char **argv)
     imageWhiteRegexList.reserve(imageWhiteList.size());
     for (const std::string& exp : imageWhiteList)
     {
-      imageWhiteRegexList.emplace_back(utils::filterToRegex(exp));
+      imageWhiteRegexList.emplace_back(simpleFilterToRegex_noThrow(exp));
     }
     
     std::vector<IndexT> viewsToRemove;
@@ -207,6 +202,11 @@ int aliceVision_main(int argc, char **argv)
   }
 
   // landmarks describer types filter
+  if(describerTypesName.empty())
+  {
+      sfmData.getLandmarks().clear();
+  }
+  else
   {
     std::vector<feature::EImageDescriberType> imageDescriberTypes = feature::EImageDescriberType_stringToEnums(describerTypesName);
 

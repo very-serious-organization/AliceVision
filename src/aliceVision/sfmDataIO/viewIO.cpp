@@ -102,20 +102,19 @@ void updateIncompleteView(sfmData::View& view, EViewIdMethod viewIdMethod, const
   }
   else if((!view.isPartOfRig()) && (view.getPoseId() != view.getViewId()))
   {
-    ALICEVISION_LOG_ERROR("Error: Bad poseId for image '" << fs::path(view.getImagePath()).filename().string() << "' (viewId should be equal to poseId)." << std::endl);
-    throw std::invalid_argument("Error: Bad poseId for image '" + fs::path(view.getImagePath()).filename().string() + "'.");
+    ALICEVISION_LOG_WARNING("PoseId and viewId are different for image '" << fs::path(view.getImagePath()).filename().string() << "'." << std::endl);
   }
 }
 
 std::shared_ptr<camera::IntrinsicBase> getViewIntrinsic(
                     const sfmData::View& view, double mmFocalLength, double sensorWidth,
-                    double defaultFocalLengthPx, double defaultFieldOfView,
+                    double defaultFocalLength, double defaultFieldOfView, 
+                    double defaultFocalRatio, double defaultOffsetX, double defaultOffsetY,
                     camera::EINTRINSIC defaultIntrinsicType,
-                    camera::EINTRINSIC allowedEintrinsics, 
-                    double defaultPPx, double defaultPPy)
+                    camera::EINTRINSIC allowedEintrinsics)
 {
   // can't combine defaultFocalLengthPx and defaultFieldOfView
-  assert(defaultFocalLengthPx < 0 || defaultFieldOfView < 0);
+  assert(defaultFocalLength < 0 || defaultFieldOfView < 0);
 
   // get view informations
   const std::string& cameraBrand = view.getMetadataMake();
@@ -123,26 +122,28 @@ std::shared_ptr<camera::IntrinsicBase> getViewIntrinsic(
   const std::string& bodySerialNumber = view.getMetadataBodySerialNumber();
   const std::string& lensSerialNumber = view.getMetadataLensSerialNumber();
 
-  double focalLengthIn35mm = mmFocalLength; // crop factor is apply later if sensor width is defined
-
-  double pxFocalLength;
+  double focalLength{-1.0};
   bool hasFocalLengthInput = false;
 
-  if(defaultFocalLengthPx > 0.0)
+  if (sensorWidth < 0)
   {
-    pxFocalLength = defaultFocalLengthPx;
+    ALICEVISION_LOG_WARNING("Sensor size is unknown");
+    ALICEVISION_LOG_WARNING("Use default sensor size (36 mm)");
+    sensorWidth = 36.0;
+  }
+  
+  if(defaultFocalLength > 0.0)
+  {
+    focalLength = defaultFocalLength;
   }
 
   if(defaultFieldOfView > 0.0)
   {
     const double focalRatio = 0.5 / std::tan(0.5 * degreeToRadian(defaultFieldOfView));
-    pxFocalLength = focalRatio * std::max(view.getWidth(), view.getHeight());
+    focalLength = focalRatio * sensorWidth;
   }
 
   camera::EINTRINSIC intrinsicType = defaultIntrinsicType;
-
-  double ppx = view.getWidth() / 2.0;
-  double ppy = view.getHeight() / 2.0;
 
   bool isResized = false;
 
@@ -166,51 +167,35 @@ std::shared_ptr<camera::IntrinsicBase> getViewIntrinsic(
       isResized = true;
     }
   }
-  else if(defaultPPx > 0.0 && defaultPPy > 0.0) // use default principal point
-  {
-    ppx = defaultPPx;
-    ppy = defaultPPy;
-  }
-
 
   // handle case where focal length (mm) is unset or false
   if(mmFocalLength <= 0.0)
   {
     ALICEVISION_LOG_WARNING("Image '" << fs::path(view.getImagePath()).filename().string() << "' focal length (in mm) metadata is missing." << std::endl
-                             << "Can't compute focal length (px), use default." << std::endl);
+                             << "Can't compute focal length, use default." << std::endl);
   }
-  else if(sensorWidth > 0.0)
+  else
   {
     // Retrieve the focal from the metadata in mm and convert to pixel.
-    pxFocalLength = std::max(view.getWidth(), view.getHeight()) * mmFocalLength / sensorWidth;
+    focalLength = mmFocalLength;
     hasFocalLengthInput = true;
-
-    //fieldOfView = radianToDegree(2.0 * std::atan(sensorWidth / (mmFocalLength * 2.0))); // [rectilinear] AFOV = 2 * arctan(sensorSize / (2 * focalLength))
-    //fieldOfView = radianToDegree(4.0 * std::asin(sensorWidth / (mmFocalLength * 4.0))); // [fisheye] AFOV = 4 * arcsin(sensorSize / (4 * focalLength))
-
-    focalLengthIn35mm *= 36.0 / sensorWidth; // multiply focal length by the crop factor
   }
+
+  double focalLengthIn35mm = 36.0 * focalLength;
+  double pxFocalLength = (focalLength / sensorWidth) * std::max(view.getWidth(), view.getHeight());
+
+  bool hasFisheyeCompatibleParameters = ((focalLengthIn35mm > 0.0 && focalLengthIn35mm < 18.0) || (defaultFieldOfView > 100.0));
+  bool checkPossiblePinhole = (allowedEintrinsics & camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE) && hasFisheyeCompatibleParameters;
 
   // choose intrinsic type
   if(cameraBrand == "Custom")
   {
     intrinsicType = camera::EINTRINSIC_stringToEnum(cameraModel);
   }
-  /*
-  // Warning: This resize heuristic is disabled as RAW images have a different size in metadata.
-  else if(isResized)
-  {
-    // if the image has been resized, we assume that it has been undistorted
-    // and we use a camera without lens distortion.
-    intrinsicType = camera::PINHOLE_CAMERA;
-  }
-  */
-  else if((allowedEintrinsics & camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE) &&
-          ((focalLengthIn35mm > 0.0 && focalLengthIn35mm < 18.0) || (defaultFieldOfView > 100.0))
-          )
+  else if(checkPossiblePinhole)
   {
     // If the focal lens is short, the fisheye model should fit better.
-      intrinsicType = camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE;
+    intrinsicType = camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE;
   }
   else if(intrinsicType == camera::EINTRINSIC::UNKNOWN)
   {
@@ -220,7 +205,8 @@ std::shared_ptr<camera::IntrinsicBase> getViewIntrinsic(
         camera::EINTRINSIC::PINHOLE_CAMERA_BROWN,
         camera::EINTRINSIC::PINHOLE_CAMERA_RADIAL1,
         camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE,
-        camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE1
+        camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE1,
+        camera::EINTRINSIC::PINHOLE_CAMERA
     };
 
     for(const auto& e : intrinsicsPriorities)
@@ -231,35 +217,40 @@ std::shared_ptr<camera::IntrinsicBase> getViewIntrinsic(
             break;
         }
     }
+
     // If still unassigned
-    if(intrinsicType == camera::EINTRINSIC::UNKNOWN)
+    if (intrinsicType == camera::EINTRINSIC::UNKNOWN)
     {
         throw std::invalid_argument("No intrinsic type can be attributed.");
     }
   }
 
   // create the desired intrinsic
-  std::shared_ptr<camera::IntrinsicBase> intrinsic = camera::createIntrinsic(intrinsicType, view.getWidth(), view.getHeight(), pxFocalLength, ppx, ppy);
-  if(hasFocalLengthInput) {
+  std::shared_ptr<camera::IntrinsicBase> intrinsic = camera::createIntrinsic(intrinsicType, view.getWidth(), view.getHeight(), pxFocalLength, pxFocalLength, 0, 0);
+  if(hasFocalLengthInput)
+  {
     std::shared_ptr<camera::IntrinsicsScaleOffset> intrinsicScaleOffset = std::dynamic_pointer_cast<camera::IntrinsicsScaleOffset>(intrinsic);
-    if (intrinsicScaleOffset) {
-      intrinsicScaleOffset->setInitialScale(pxFocalLength);
+    
+    if (intrinsicScaleOffset)
+    {
+      intrinsicScaleOffset->setInitialScale({pxFocalLength, pxFocalLength / defaultFocalRatio});
+      intrinsicScaleOffset->setOffset({defaultOffsetX, defaultOffsetY});
     }
   }
 
   // initialize distortion parameters
   switch(intrinsicType)
   {
-      case camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE:
+    case camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE:
     {
       if(cameraBrand == "GoPro")
-        intrinsic->updateFromParams({pxFocalLength, ppx, ppy, 0.0524, 0.0094, -0.0037, -0.0004});
+        intrinsic->updateFromParams({pxFocalLength, pxFocalLength, 0, 0, 0.0524, 0.0094, -0.0037, -0.0004});
       break;
     }
-      case camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE1:
+    case camera::EINTRINSIC::PINHOLE_CAMERA_FISHEYE1:
     {
       if(cameraBrand == "GoPro")
-        intrinsic->updateFromParams({pxFocalLength, ppx, ppy, 1.04});
+        intrinsic->updateFromParams({pxFocalLength, pxFocalLength, 0, 0, 1.04});
       break;
     }
     default: break;
@@ -277,6 +268,30 @@ std::vector<std::string> viewPathsFromFolders(const sfmData::View& view, const s
         const boost::filesystem::path stem = path.stem();
         return (stem == std::to_string(view.getViewId()) || stem == fs::path(view.getImagePath()).stem());
     });
+}
+
+bool extractNumberFromFileStem(const std::string& imagePathStem, IndexT& number, std::string& prefix, std::string& suffix)
+{
+    // check if the image stem contains a number
+    // regexFrame: ^(.*\D)?([0-9]+)([\-_\.].*[[:alpha:]].*)?$
+    std::regex regexFrame("^(.*\\D)?"       // the optional prefix which ends with a non digit character
+                          "([0-9]+)"        // the number
+                          "([\\-_\\.]"      // the suffix starts with a separator
+                          ".*[[:alpha:]].*" // at least one letter in the suffix
+                          ")?$"             // suffix is optional
+    );
+
+    std::smatch matches;
+    const bool containsNumber = std::regex_search(imagePathStem, matches, regexFrame);
+
+    if(containsNumber)
+    {
+        prefix = matches[1];
+        suffix = matches[3];
+        number = static_cast<IndexT>(std::stoi(matches[2]));
+    }
+
+    return containsNumber;
 }
 
 } // namespace sfmDataIO

@@ -33,20 +33,19 @@ using namespace aliceVision::image;
 using namespace aliceVision::matching;
 using namespace aliceVision::robustEstimation;
 using namespace svg;
-using namespace std;
 
 int main() {
-
+  std::mt19937 randomNumberGenerator;
   std::cout << "Compute the relative pose between two spherical image."
    << "\nUse an Acontrario robust estimation based on angular errors." << std::endl;
 
   const std::string sInputDir = std::string(THIS_SOURCE_DIR);
-  const string jpg_filenameL = sInputDir + "/SponzaLion000.jpg";
+  const std::string jpg_filenameL = sInputDir + "/SponzaLion000.jpg";
 
   Image<unsigned char> imageL;
   readImage(jpg_filenameL, imageL, image::EImageColorSpace::NO_CONVERSION);
 
-  const string jpg_filenameR = sInputDir + "/SponzaLion001.jpg";
+  const std::string jpg_filenameR = sInputDir + "/SponzaLion001.jpg";
 
   Image<unsigned char> imageR;
   readImage(jpg_filenameR, imageR, image::EImageColorSpace::NO_CONVERSION);
@@ -55,7 +54,9 @@ int main() {
   // Detect regions thanks to an image_describer
   //--
   using namespace aliceVision::feature;
-  std::unique_ptr<ImageDescriber> image_describer(new ImageDescriber_SIFT(SiftParams(-1)));
+  SiftParams siftParams;
+  siftParams._firstOctave = -1;
+  std::unique_ptr<ImageDescriber> image_describer(new ImageDescriber_SIFT(siftParams));
   std::map<IndexT, std::unique_ptr<feature::Regions> > regions_perImage;
   image_describer->describe(imageL, regions_perImage[0]);
   image_describer->describe(imageR, regions_perImage[1]);
@@ -74,7 +75,7 @@ int main() {
   {
     Image<unsigned char> concat;
     ConcatH(imageL, imageR, concat);
-    string out_filename = "01_concat.jpg";
+    std::string out_filename = "01_concat.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -92,7 +93,7 @@ int main() {
       const PointFeature point = regionsR->Features()[i];
       DrawCircle(point.x()+imageL.Width(), point.y(), point.scale(), 255, &concat);
     }
-    string out_filename = "02_features.jpg";
+    std::string out_filename = "02_features.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -101,6 +102,7 @@ int main() {
   {
     // Find corresponding points
     matching::DistanceRatioMatch(
+      randomNumberGenerator,
       0.8, matching::ANN_L2,
       *regions_perImage.at(0).get(),
       *regions_perImage.at(1).get(),
@@ -110,7 +112,7 @@ int main() {
     matchDeduplicator.getDeduplicated(vec_PutativeMatches);
 
     // Draw correspondences after Nearest Neighbor ratio filter
-    svgDrawer svgStream( imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
     svgStream.drawImage(jpg_filenameR, imageR.Width(), imageR.Height(), imageL.Width());
     for (size_t i = 0; i < vec_PutativeMatches.size(); ++i) {
@@ -121,8 +123,8 @@ int main() {
       svgStream.drawCircle(L.x(), L.y(), L.scale(), svgStyle().stroke("yellow", 2.0));
       svgStream.drawCircle(R.x()+imageL.Width(), R.y(), R.scale(),svgStyle().stroke("yellow", 2.0));
     }
-    string out_filename = "03_siftMatches.svg";
-    ofstream svgFile( out_filename.c_str() );
+    std::string out_filename = "03_siftMatches.svg";
+    std::ofstream svgFile(out_filename.c_str());
     svgFile << svgStream.closeSvgFile().str();
     svgFile.close();
   }
@@ -164,7 +166,7 @@ int main() {
       // Robust estimation of the Essential matrix and it's precision
       robustEstimation::Mat3Model E;
       const double precision = std::numeric_limits<double>::infinity();
-      const std::pair<double,double> ACRansacOut = ACRANSAC(kernel, vec_inliers, 1024, &E, precision);
+      const std::pair<double,double> ACRansacOut = ACRANSAC(kernel, randomNumberGenerator, vec_inliers, 1024, &E, precision);
       const double & threshold = ACRansacOut.first;
       const double & NFA = ACRansacOut.second;
 

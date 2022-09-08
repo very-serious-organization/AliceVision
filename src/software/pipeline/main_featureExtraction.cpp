@@ -121,6 +121,11 @@ public:
     _maxThreads = maxThreads;
   }
 
+  void setMasksFolder(const std::string& folder)
+  {
+    _masksFolder = folder;
+  }
+
   void setOutputFolder(const std::string& folder)
   {
     _outputFolder = folder;
@@ -166,17 +171,44 @@ public:
     {
       system::MemoryInfo memoryInformation = system::getMemoryInfo();
 
-      ALICEVISION_LOG_DEBUG("Job max memory consumption: " << jobMaxMemoryConsuption << " B");
-      ALICEVISION_LOG_DEBUG("Memory information: " << std::endl <<memoryInformation);
+      ALICEVISION_LOG_INFO("Job max memory consumption for one image: " << jobMaxMemoryConsuption / (1024*1024) << " MB");
+      ALICEVISION_LOG_INFO("Memory information: " << std::endl << memoryInformation);
 
       if(jobMaxMemoryConsuption == 0)
         throw std::runtime_error("Cannot compute feature extraction job max memory consumption.");
 
-      std::size_t nbThreads =  (0.9 * memoryInformation.freeRam) / jobMaxMemoryConsuption;
-
-      if(memoryInformation.freeRam == 0)
+      // How many buffers can fit in 90% of the available RAM?
+      // This is used to estimate how many jobs can be computed in parallel without SWAP.
+      const std::size_t memoryImageCapacity = std::size_t((0.9 * memoryInformation.availableRam) / jobMaxMemoryConsuption);
+      std::size_t nbThreads = std::max(std::size_t(1), memoryImageCapacity);
+      ALICEVISION_LOG_INFO("Max number of threads regarding memory usage: " << nbThreads);
+      const double oneGB = 1024.0 * 1024.0 * 1024.0;
+      if(jobMaxMemoryConsuption > memoryInformation.availableRam)
       {
-        ALICEVISION_LOG_WARNING("Cannot find available system memory, this can be due to OS limitations.\n"
+          ALICEVISION_LOG_WARNING("The amount of RAM available is critical to extract features.");
+          if(jobMaxMemoryConsuption <= memoryInformation.totalRam)
+          {
+              ALICEVISION_LOG_WARNING("But the total amount of RAM is enough to extract features, so you should close other running applications.");
+              ALICEVISION_LOG_WARNING(" => " << std::size_t(std::round((double(memoryInformation.totalRam - memoryInformation.availableRam) / oneGB)))
+                                      << " GB are used by other applications for a total RAM capacity of "
+                                      << std::size_t(std::round(double(memoryInformation.totalRam) / oneGB)) << " GB.");
+          }
+      }
+      else
+      {
+          if(memoryInformation.availableRam < 0.5 * memoryInformation.totalRam)
+          {
+              ALICEVISION_LOG_WARNING("More than half of the RAM is used by other applications. It would be more efficient to close them.");
+              ALICEVISION_LOG_WARNING(" => "
+                                      << std::size_t(std::round(double(memoryInformation.totalRam - memoryInformation.availableRam) / oneGB))
+                                      << " GB are used by other applications for a total RAM capacity of "
+                                      << std::size_t(std::round(double(memoryInformation.totalRam) / oneGB)) << " GB.");
+          }
+      }
+
+      if(memoryInformation.availableRam == 0)
+      {
+        ALICEVISION_LOG_WARNING("Cannot find available system memory, this can be due to OS limitation.\n"
                                 "Use only one thread for CPU feature extraction.");
         nbThreads = 1;
       }
@@ -188,10 +220,10 @@ public:
       // nbThreads should not be higher than the core number
       nbThreads = std::min(static_cast<std::size_t>(omp_get_num_procs()), nbThreads);
 
-      // nbThreads should not be higher than the job number
+      // nbThreads should not be higher than the number of jobs
       nbThreads = std::min(_cpuJobs.size(), nbThreads);
 
-      ALICEVISION_LOG_DEBUG("# threads for extraction: " << nbThreads);
+      ALICEVISION_LOG_INFO("# threads for extraction: " << nbThreads);
       omp_set_nested(1);
 
 #pragma omp parallel for num_threads(nbThreads)
@@ -214,8 +246,25 @@ private:
   {
     image::Image<float> imageGrayFloat;
     image::Image<unsigned char> imageGrayUChar;
+    image::Image<unsigned char> mask;
 
     image::readImage(job.view.getImagePath(), imageGrayFloat, image::EImageColorSpace::SRGB);
+
+    if(!_masksFolder.empty() && fs::exists(_masksFolder))
+    {
+      const auto masksFolder = fs::path(_masksFolder);
+      const auto idMaskPath = masksFolder / fs::path(std::to_string(job.view.getViewId())).replace_extension("png");
+      const auto nameMaskPath = masksFolder / fs::path(job.view.getImagePath()).filename().replace_extension("png");
+
+      if(fs::exists(idMaskPath))
+      {
+        image::readImage(idMaskPath.string(), mask, image::EImageColorSpace::LINEAR);
+      }
+      else if(fs::exists(nameMaskPath))
+      {
+        image::readImage(nameMaskPath.string(), mask, image::EImageColorSpace::LINEAR);
+      }
+    }
 
     const auto imageDescriberIndexes = useGPU ? job.gpuImageDescriberIndexes : job.cpuImageDescriberIndexes;
 
@@ -241,6 +290,36 @@ private:
           imageGrayUChar = (imageGrayFloat.GetMat() * 255.f).cast<unsigned char>();
         imageDescriber->describe(imageGrayUChar, regions);
       }
+
+      if(mask.Height() > 0)
+      {
+        std::vector<feature::FeatureInImage> selectedIndices;
+        for(size_t i=0, n=regions->RegionCount(); i != n; ++i)
+        {
+          const Vec2 position = regions->GetRegionPosition(i);
+          const int x = int(position.x());
+          const int y = int(position.y());
+
+          bool masked = false;
+          if(x < mask.Width() && y < mask.Height())
+          {
+            if(mask(y, x) == 0)
+            {
+              masked = true;
+            }
+          }
+
+          if(!masked)
+          {
+            selectedIndices.push_back({IndexT(i), 0});
+          }
+        }
+
+        std::vector<IndexT> out_associated3dPoint;
+        std::map<IndexT, IndexT> out_mapFullToLocal;
+        regions = regions->createFilteredRegions(selectedIndices, out_associated3dPoint, out_mapFullToLocal);
+      }
+
       imageDescriber->Save(regions.get(), job.getFeaturesPath(imageDescriberType), job.getDescriptorPath(imageDescriberType));
       ALICEVISION_LOG_INFO(std::left << std::setw(6) << " " << regions->RegionCount() << " " << imageDescriberTypeName  << " features extracted from view '" << job.view.getImagePath() << "'");
     }
@@ -248,6 +327,7 @@ private:
 
   const sfmData::SfMData& _sfmData;
   std::vector<std::shared_ptr<feature::ImageDescriber>> _imageDescribers;
+  std::string _masksFolder;
   std::string _outputFolder;
   int _rangeStart = -1;
   int _rangeSize = -1;
@@ -265,12 +345,13 @@ int aliceVision_main(int argc, char **argv)
 
   system::EVerboseLevel verboseLevel = system::Logger::getDefaultVerboseLevel();
   std::string sfmDataFilename;
+  std::string masksFolder;
   std::string outputFolder;
 
   // user optional parameters
 
   std::string describerTypesName = feature::EImageDescriberType_enumToString(feature::EImageDescriberType::SIFT);
-  std::string describerPreset = feature::EImageDescriberPreset_enumToString(feature::EImageDescriberPreset::NORMAL);
+  feature::ConfigurationPreset featDescConfig;
   int rangeStart = -1;
   int rangeSize = 1;
   int maxThreads = 0;
@@ -289,11 +370,23 @@ int aliceVision_main(int argc, char **argv)
   optionalParams.add_options()
     ("describerTypes,d", po::value<std::string>(&describerTypesName)->default_value(describerTypesName),
       feature::EImageDescriberType_informations().c_str())
-    ("describerPreset,p", po::value<std::string>(&describerPreset)->default_value(describerPreset),
+    ("describerPreset,p", po::value<feature::EImageDescriberPreset>(&featDescConfig.descPreset)->default_value(featDescConfig.descPreset),
       "Control the ImageDescriber configuration (low, medium, normal, high, ultra).\n"
       "Configuration 'ultra' can take long time !")
+    ("describerQuality", po::value<feature::EFeatureQuality>(&featDescConfig.quality)->default_value(featDescConfig.quality),
+      feature::EFeatureQuality_information().c_str())
+    ("gridFiltering", po::value<bool>(&featDescConfig.gridFiltering)->default_value(featDescConfig.gridFiltering),
+      "Enable grid filtering. Highly recommended to ensure usable number of features.")
+    ("maxNbFeatures", po::value<int>(&featDescConfig.maxNbFeatures)->default_value(featDescConfig.maxNbFeatures),
+      "Max number of features extracted (0 means default value based on describerPreset).")
+    ("contrastFiltering", po::value<feature::EFeatureConstrastFiltering>(&featDescConfig.contrastFiltering)->default_value(featDescConfig.contrastFiltering),
+      feature::EFeatureConstrastFiltering_information().c_str())
+    ("relativePeakThreshold", po::value<float>(&featDescConfig.relativePeakThreshold)->default_value(featDescConfig.relativePeakThreshold),
+       "Peak Threshold relative to median of gradiants.")
     ("forceCpuExtraction", po::value<bool>(&forceCpuExtraction)->default_value(forceCpuExtraction),
       "Use only CPU feature extraction methods.")
+    ("masksFolder", po::value<std::string>(&masksFolder),
+      "Masks folder.")
     ("rangeStart", po::value<int>(&rangeStart)->default_value(rangeStart),
       "Range image index start.")
     ("rangeSize", po::value<int>(&rangeSize)->default_value(rangeSize),
@@ -371,6 +464,7 @@ int aliceVision_main(int argc, char **argv)
 
   // create feature extractor
   FeatureExtractor extractor(sfmData);
+  extractor.setMasksFolder(masksFolder);
   extractor.setOutputFolder(outputFolder);
 
   // set maxThreads
@@ -399,7 +493,7 @@ int aliceVision_main(int argc, char **argv)
     for(const auto& imageDescriberType: imageDescriberTypes)
     {
       std::shared_ptr<feature::ImageDescriber> imageDescriber = feature::createImageDescriber(imageDescriberType);
-      imageDescriber->setConfigurationPreset(describerPreset);
+      imageDescriber->setConfigurationPreset(featDescConfig);
       if(forceCpuExtraction)
         imageDescriber->setUseCuda(false);
 

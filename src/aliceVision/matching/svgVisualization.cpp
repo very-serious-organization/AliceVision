@@ -25,12 +25,17 @@ std::string describerTypeColor(feature::EImageDescriberType descType )
     case feature::EImageDescriberType::SIFT:           return "yellow";
     case feature::EImageDescriberType::SIFT_FLOAT:     return "yellow";
     case feature::EImageDescriberType::SIFT_UPRIGHT:   return "yellow";
+    case feature::EImageDescriberType::DSPSIFT:        return "yellow";
+
     case feature::EImageDescriberType::AKAZE:          return "purple";
     case feature::EImageDescriberType::AKAZE_LIOP:     return "purple";
     case feature::EImageDescriberType::AKAZE_MLDB:     return "purple";
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
     case feature::EImageDescriberType::CCTAG3:         return "blue";
     case feature::EImageDescriberType::CCTAG4:         return "blue";
+#endif
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+    case feature::EImageDescriberType::APRILTAG16H5:   return "blue";
 #endif
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OPENCV)

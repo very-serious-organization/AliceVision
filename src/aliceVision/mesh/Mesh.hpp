@@ -13,14 +13,50 @@
 #include <aliceVision/mvsData/StaticVector.hpp>
 #include <aliceVision/mvsData/Voxel.hpp>
 #include <aliceVision/mvsUtils/common.hpp>
+#include <aliceVision/stl/bitmask.hpp>
 
-#include <geogram/points/kd_tree.h>
+namespace GEO {
+    class AdaptiveKdTree;
+}
 
 namespace aliceVision {
 namespace mesh {
 
 using PointVisibility = StaticVector<int>;
 using PointsVisibility = StaticVector<PointVisibility>;
+
+/**
+ * @brief Method to remap visibilities from the reconstruction onto an other mesh.
+ */
+enum EVisibilityRemappingMethod
+{
+    Pull = 1, //< For each vertex of the input mesh, pull the visibilities from the closest vertex in the reconstruction.
+    Push = 2, //< For each vertex of the reconstruction, push the visibilities to the closest triangle in the input mesh.
+    MeshItself = 4,        //< For each vertex of the mesh, test the reprojection in each camera
+    PullPush = Pull | Push //< Combine results from Pull and Push results.
+};
+
+ALICEVISION_BITMASK(EVisibilityRemappingMethod);
+
+EVisibilityRemappingMethod EVisibilityRemappingMethod_stringToEnum(const std::string& method);
+std::string EVisibilityRemappingMethod_enumToString(EVisibilityRemappingMethod method);
+
+/**
+ * @brief File type available for exporting mesh
+ */
+enum class EFileType
+{
+    OBJ = 0,
+    FBX,
+    GLTF,
+    STL
+};
+
+EFileType EFileType_stringToEnum(const std::string& filetype);
+std::string EFileType_enumToString(const EFileType filetype);
+std::istream& operator>>(std::istream& in, EFileType& meshFileType);
+std::ostream& operator<<(std::ostream& os, EFileType meshFileType);
+
 
 class Mesh
 {
@@ -128,11 +164,11 @@ public:
     Mesh();
     ~Mesh();
 
-    void saveToObj(const std::string& filename);
+    void save(const std::string& filepath);
 
-    bool loadFromBin(const std::string& binFileName);
-    void saveToBin(const std::string& binFileName);
-    bool loadFromObjAscii(const std::string& objAsciiFileName);
+    bool loadFromBin(const std::string& binFilepath);
+    void saveToBin(const std::string& binFilepath);
+    void load(const std::string& filepath);
 
     void addMesh(const Mesh& mesh);
 
@@ -157,7 +193,7 @@ public:
     void getPtsNeighPtsOrdered(StaticVector<StaticVector<int>>& out_ptsNeighTris) const;
 
     void getVisibleTrianglesIndexes(StaticVector<int>& out_visTri, const std::string& tmpDir, const mvsUtils::MultiViewParams& mp, int rc, int w, int h);
-    void getVisibleTrianglesIndexes(StaticVector<int>& out_visTri, const std::string& depthMapFileName, const std::string& trisMapFileName,
+    void getVisibleTrianglesIndexes(StaticVector<int>& out_visTri, const std::string& depthMapFilepath, const std::string& trisMapFilepath,
                                                   const mvsUtils::MultiViewParams& mp, int rc, int w, int h);
     void getVisibleTrianglesIndexes(StaticVector<int>& out_visTri, StaticVector<StaticVector<int>>& trisMap,
                                                   StaticVector<float>& depthMap, const mvsUtils::MultiViewParams& mp, int rc, int w,
@@ -185,6 +221,7 @@ public:
     void removeFreePointsFromMesh(StaticVector<int>& out_ptIdToNewPtId);
 
     void letJustTringlesIdsInMesh(StaticVector<int>& trisIdsToStay);
+    void letJustTringlesIdsInMesh(const StaticVectorBool& trisToStay);
 
     double computeAverageEdgeLength() const;
     double computeLocalAverageEdgeLength(const std::vector<std::vector<int>>& ptsNeighbors, int ptId) const;
@@ -218,7 +255,25 @@ public:
                           float alpha);
     void removeTrianglesInHexahedrons(StaticVector<Point3d>* hexahsToExcludeFromResultingMesh);
     void removeTrianglesOutsideHexahedron(Point3d* hexah);
-    void filterLargeEdgeTriangles(double cutAverageEdgeLengthFactor);
+
+   /**
+    * @brief Find all triangles with an edge length higher than the average in order to be removed.
+    * @param[in] cutAverageEdgeLengthFactor The average edge length filtering factor.
+    * @param[in] trisToConsider The input triangle group. if empty, all triangles of the mesh.
+    * @param[out] trisIdsToStay For each triangle set to true if the triangle should stay.
+    * @return false if no boundaries.
+    */
+    void filterLargeEdgeTriangles(double cutAverageEdgeLengthFactor, const StaticVectorBool& trisToConsider, StaticVectorBool& trisIdsToStay) const;
+
+   /**
+    * @brief Find all triangles with [maxEdge/minEdge > ratio] in order to be removed.
+    * @param[in] ratio The filtering ratio.
+    * @param[in] trisToConsider The input triangle group. if empty, all triangles of the mesh.
+    * @param[out] trisIdsToStay For each triangle set to true if the triangle should stay.
+    * @return false if no boundaries.
+    */
+    void filterTrianglesByRatio(double ratio, const StaticVectorBool& trisToConsider, StaticVectorBool& trisIdsToStay) const;
+
     void invertTriangleOrientations();
     void changeTriPtId(int triId, int oldPtId, int newPtId);
     int getTriPtIndex(int triId, int ptId, bool failIfDoesNotExists = true) const;
@@ -228,6 +283,33 @@ public:
 
     bool getEdgeNeighTrisInterval(Pixel& itr, Pixel& edge, StaticVector<Voxel>& edgesXStat,
                                   StaticVector<Voxel>& edgesXYStat);
+
+   /**
+    * @brief Lock mesh vertices on the surface boundaries.
+    * @param[in] neighbourIterations Number of boudary neighbours.
+    * @param[out] out_ptsCanMove For each mesh vertices set to true if locked. Initialized if empty.
+    * @param[in] invert if true lock all vertices not on the surface boundaries.
+    * @return false if no boundaries.
+    */
+    bool lockSurfaceBoundaries(int neighbourIterations, StaticVectorBool& out_ptsCanMove, bool invert = false) const;
+
+   /**
+    * @brief Get mesh triangles on the surface boundaries.
+    * @param[out] out_trisToConsider For each mesh triangle set to true if on surface.
+    * @param[in] invert If true get all triangles not on the surface boundaries.
+    * @return false if no boundaries.
+    */
+    bool getSurfaceBoundaries(StaticVectorBool& out_trisToConsider, bool invert = false) const;
+    
+
+    /**
+     * @brief Remap visibilities
+     *
+     * @param[in] remappingMethod the remapping method
+     * @param[in] refMesh the reference mesh
+     * @param[in] refPointsVisibilities the reference visibilities
+     */
+    void remapVisibilities(EVisibilityRemappingMethod remappingMethod, const Mesh& refMesh);
 };
 
 } // namespace mesh

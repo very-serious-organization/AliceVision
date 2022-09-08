@@ -34,17 +34,6 @@
 namespace aliceVision {
 namespace localization {
 
-std::ostream& operator<<( std::ostream& os, const voctree::Document &doc )	
-{
-  os << "[ ";
-  for( const voctree::Word &w : doc )
-  {
-          os << w << ", ";
-  }
-  os << "];\n";
-  return os;
-}
-
 std::ostream& operator<<(std::ostream& os, VoctreeLocalizer::Algorithm a)
 {
   switch(a)
@@ -148,6 +137,7 @@ VoctreeLocalizer::VoctreeLocalizer(const sfmData::SfMData &sfmData,
 bool VoctreeLocalizer::localize(const feature::MapRegionsPerDesc & queryRegions,
                                 const std::pair<std::size_t, std::size_t> &imageSize,
                                 const LocalizerParameters *param,
+                                std::mt19937 & randomNumberGenerator,
                                 bool useInputIntrinsics,
                                 camera::PinholeRadialK3 &queryIntrinsics,
                                 LocalizationResult & localizationResult,
@@ -166,6 +156,7 @@ bool VoctreeLocalizer::localize(const feature::MapRegionsPerDesc & queryRegions,
     return localizeFirstBestResult(queryRegions,
                                    imageSize,
                                    *voctreeParam,
+                                   randomNumberGenerator,
                                    useInputIntrinsics,
                                    queryIntrinsics,
                                    localizationResult,
@@ -175,6 +166,7 @@ bool VoctreeLocalizer::localize(const feature::MapRegionsPerDesc & queryRegions,
     return localizeAllResults(queryRegions,
                               imageSize,
                               *voctreeParam,
+                              randomNumberGenerator,
                               useInputIntrinsics,
                               queryIntrinsics,
                               localizationResult,
@@ -186,6 +178,7 @@ bool VoctreeLocalizer::localize(const feature::MapRegionsPerDesc & queryRegions,
 
 bool VoctreeLocalizer::localize(const image::Image<float>& imageGrey,
                                 const LocalizerParameters *param,
+                                std::mt19937 & randomNumberGenerator,
                                 bool useInputIntrinsics,
                                 camera::PinholeRadialK3 &queryIntrinsics,
                                 LocalizationResult &localizationResult,
@@ -244,8 +237,9 @@ bool VoctreeLocalizer::localize(const image::Image<float>& imageGrey,
   }
 
   return localize(queryRegionsPerDesc,
-                  queryImageSize,
+                  queryImageSize, 
                   param,
+                  randomNumberGenerator,
                   useInputIntrinsics,
                   queryIntrinsics,
                   localizationResult,
@@ -389,6 +383,7 @@ bool VoctreeLocalizer::initDatabase(const std::string & vocTreeFilepath,
 bool VoctreeLocalizer::localizeFirstBestResult(const feature::MapRegionsPerDesc &queryRegions,
                                                const std::pair<std::size_t, std::size_t> &queryImageSize,
                                                const Parameters &param,
+                                               std::mt19937 & randomNumberGenerator,
                                                bool useInputIntrinsics,
                                                camera::PinholeRadialK3 &queryIntrinsics,
                                                LocalizationResult &localizationResult,
@@ -420,7 +415,7 @@ bool VoctreeLocalizer::localizeFirstBestResult(const feature::MapRegionsPerDesc 
 //  }
 
   ALICEVISION_LOG_DEBUG("[matching]\tBuilding the matcher");
-  matching::RegionsDatabaseMatcherPerDesc matchers(_matcherType, queryRegions);
+  matching::RegionsDatabaseMatcherPerDesc matchers(randomNumberGenerator, _matcherType, queryRegions);
 
   sfm::ImageLocalizerMatchData resectionData;
   std::vector<IndMatch3D2D> associationIDs;
@@ -467,6 +462,7 @@ bool VoctreeLocalizer::localizeFirstBestResult(const feature::MapRegionsPerDesc 
                                       param._useGuidedMatching,
                                       queryImageSize,
                                       std::make_pair(matchedView->getWidth(), matchedView->getHeight()),
+                                      randomNumberGenerator,
                                       featureMatches,
                                       param._matchingEstimator);
     if (!matchWorked)
@@ -539,6 +535,7 @@ bool VoctreeLocalizer::localizeFirstBestResult(const feature::MapRegionsPerDesc 
     bool bResection = sfm::SfMLocalizer::Localize(queryImageSize,
                                                    // pass the input intrinsic if they are valid, null otherwise
                                                    (useInputIntrinsics) ? &queryIntrinsics : nullptr,
+                                                   randomNumberGenerator, 
                                                    resectionData,
                                                    pose,
                                                    param._resectionEstimator);
@@ -607,6 +604,7 @@ bool VoctreeLocalizer::localizeFirstBestResult(const feature::MapRegionsPerDesc 
 bool VoctreeLocalizer::localizeAllResults(const feature::MapRegionsPerDesc &queryRegions,
                                           const std::pair<std::size_t, std::size_t> & queryImageSize,
                                           const Parameters &param,
+                                          std::mt19937 & randomNumberGenerator,
                                           bool useInputIntrinsics,
                                           camera::PinholeRadialK3 &queryIntrinsics,
                                           LocalizationResult &localizationResult,
@@ -623,6 +621,7 @@ bool VoctreeLocalizer::localizeAllResults(const feature::MapRegionsPerDesc &quer
   getAllAssociations(queryRegions,
                      queryImageSize,
                      param,
+                     randomNumberGenerator,
                      useInputIntrinsics,
                      queryIntrinsics,
                      occurences,
@@ -655,6 +654,7 @@ bool VoctreeLocalizer::localizeAllResults(const feature::MapRegionsPerDesc &quer
   const bool bResection = sfm::SfMLocalizer::Localize(queryImageSize,
                                                       // pass the input intrinsic if they are valid, null otherwise
                                                       (useInputIntrinsics) ? &queryIntrinsics : nullptr,
+                                                      randomNumberGenerator, 
                                                       resectionData,
                                                       pose,
                                                       param._resectionEstimator);
@@ -743,6 +743,7 @@ bool VoctreeLocalizer::localizeAllResults(const feature::MapRegionsPerDesc &quer
 void VoctreeLocalizer::getAllAssociations(const feature::MapRegionsPerDesc &queryRegions,
                                           const std::pair<std::size_t, std::size_t> &imageSize,
                                           const Parameters &param,
+                                          std::mt19937 & randomNumberGenerator,
                                           bool useInputIntrinsics,
                                           const camera::PinholeRadialK3 &queryIntrinsics,
                                           OccurenceMap &out_occurences,
@@ -752,7 +753,7 @@ void VoctreeLocalizer::getAllAssociations(const feature::MapRegionsPerDesc &quer
                                           std::vector<voctree::DocMatch>& out_matchedImages,
                                           const std::string& imagePath) const
 {
-  assert(out_descTypes.size() == 0);
+  assert(out_descTypes.empty());
 
   // A. Find the (visually) similar images in the database 
   // pass the descriptors through the vocabulary tree to get the visual words
@@ -782,7 +783,7 @@ void VoctreeLocalizer::getAllAssociations(const feature::MapRegionsPerDesc &quer
 //  }
 
   ALICEVISION_LOG_DEBUG("[matching]\tBuilding the matcher");
-  matching::RegionsDatabaseMatcherPerDesc matchers(_matcherType, queryRegions);
+  matching::RegionsDatabaseMatcherPerDesc matchers(randomNumberGenerator, _matcherType, queryRegions);
 
   std::map< std::pair<IndexT, IndexT>, std::size_t > repeated;
   
@@ -835,6 +836,7 @@ void VoctreeLocalizer::getAllAssociations(const feature::MapRegionsPerDesc &quer
                                       param._useGuidedMatching,
                                       imageSize,
                                       std::make_pair(matchedView->getWidth(), matchedView->getHeight()),
+                                      randomNumberGenerator,
                                       featureMatches,
                                       param._matchingEstimator);
     if (!matchWorked)
@@ -926,7 +928,7 @@ void VoctreeLocalizer::getAllAssociations(const feature::MapRegionsPerDesc &quer
   {
     ALICEVISION_LOG_DEBUG("[matching]\tUsing frameBuffer matching: matching with the past " 
             << param._nbFrameBufferMatching << " frames" );
-    getAssociationsFromBuffer(matchers, imageSize, param, useInputIntrinsics, queryIntrinsics, out_occurences);
+    getAssociationsFromBuffer(matchers, imageSize, param, useInputIntrinsics, queryIntrinsics, out_occurences, randomNumberGenerator);
   }
   
   const std::size_t numCollectedPts = out_occurences.size();
@@ -982,6 +984,7 @@ void VoctreeLocalizer::getAssociationsFromBuffer(matching::RegionsDatabaseMatche
                                                  bool useInputIntrinsics,
                                                  const camera::PinholeRadialK3 &queryIntrinsics,
                                                  OccurenceMap & out_occurences,
+                                                 std::mt19937 & randomNumberGenerator,
                                                  const std::string& imagePath) const
 {
   std::size_t frameCounter = 0;
@@ -1006,7 +1009,8 @@ void VoctreeLocalizer::getAssociationsFromBuffer(matching::RegionsDatabaseMatche
                                       param._useRobustMatching,
                                       param._useGuidedMatching,
                                       queryImageSize,
-                                      frameImageSize, 
+                                      frameImageSize,
+                                      randomNumberGenerator, 
                                       featureMatches,
                                       param._matchingEstimator);
     if (!matchWorked)
@@ -1058,6 +1062,7 @@ bool VoctreeLocalizer::robustMatching(matching::RegionsDatabaseMatcherPerDesc & 
                                       bool useGuidedMatching,
                                       const std::pair<std::size_t,std::size_t> & imageSizeI,     // size of the first image @fixme change the API of the kernel!! 
                                       const std::pair<std::size_t,std::size_t> & imageSizeJ,     // size of the second image
+                                      std::mt19937 & randomNumberGenerator,
                                       matching::MatchesPerDescType & out_featureMatches,
                                       robustEstimation::ERobustEstimator estimator) const
 {
@@ -1110,6 +1115,7 @@ bool VoctreeLocalizer::robustMatching(matching::RegionsDatabaseMatcherPerDesc & 
         imageSizeI,
         imageSizeJ,
         putativeFeatureMatches,
+        randomNumberGenerator,
         geometricInliersPerType);
 
   if(!estimationState.isValid)
@@ -1152,6 +1158,7 @@ bool VoctreeLocalizer::robustMatching(matching::RegionsDatabaseMatcherPerDesc & 
 
 bool VoctreeLocalizer::localizeRig(const std::vector<image::Image<float>> & vec_imageGrey,
                                    const LocalizerParameters *parameters,
+                                   std::mt19937 & randomNumberGenerator,
                                    std::vector<camera::PinholeRadialK3 > &vec_queryIntrinsics,
                                    const std::vector<geometry::Pose3 > &vec_subPoses,
                                    geometry::Pose3 &rigPose, 
@@ -1198,6 +1205,7 @@ bool VoctreeLocalizer::localizeRig(const std::vector<image::Image<float>> & vec_
   return localizeRig(vec_queryRegions,
                      vec_imageSize,
                      parameters,
+                     randomNumberGenerator,
                      vec_queryIntrinsics,
                      vec_subPoses,
                      rigPose,
@@ -1208,6 +1216,7 @@ bool VoctreeLocalizer::localizeRig(const std::vector<image::Image<float>> & vec_
 bool VoctreeLocalizer::localizeRig(const std::vector<feature::MapRegionsPerDesc> & vec_queryRegions,
                                    const std::vector<std::pair<std::size_t, std::size_t> > &vec_imageSize,
                                    const LocalizerParameters *parameters,
+                                   std::mt19937 & randomNumberGenerator,
                                    std::vector<camera::PinholeRadialK3 > &vec_queryIntrinsics,
                                    const std::vector<geometry::Pose3 > &vec_subPoses,
                                    geometry::Pose3 &rigPose,
@@ -1220,6 +1229,7 @@ bool VoctreeLocalizer::localizeRig(const std::vector<feature::MapRegionsPerDesc>
     return localizeRig_opengv(vec_queryRegions,
                               vec_imageSize,
                               parameters,
+                              randomNumberGenerator,
                               vec_queryIntrinsics,
                               vec_subPoses,
                               rigPose,
@@ -1233,6 +1243,7 @@ bool VoctreeLocalizer::localizeRig(const std::vector<feature::MapRegionsPerDesc>
     return localizeRig_naive(vec_queryRegions,
                            vec_imageSize,
                            parameters,
+                           randomNumberGenerator,
                            vec_queryIntrinsics,
                            vec_subPoses,
                            rigPose,
@@ -1246,6 +1257,7 @@ bool VoctreeLocalizer::localizeRig(const std::vector<feature::MapRegionsPerDesc>
 bool VoctreeLocalizer::localizeRig_opengv(const std::vector<feature::MapRegionsPerDesc> & vec_queryRegions,
                                           const std::vector<std::pair<std::size_t, std::size_t> > &vec_imageSize,
                                           const LocalizerParameters *parameters,
+                                          std::mt19937 &randomNumberGenerator,
                                           std::vector<camera::PinholeRadialK3 > &vec_queryIntrinsics,
                                           const std::vector<geometry::Pose3 > &vec_subPoses,
                                           geometry::Pose3 &rigPose,
@@ -1291,6 +1303,7 @@ bool VoctreeLocalizer::localizeRig_opengv(const std::vector<feature::MapRegionsP
     getAllAssociations(vec_queryRegions[camID],
                        imageSize,
                        *param,
+                       randomNumberGenerator,
                        useInputIntrinsics,
                        queryIntrinsics,
                        occurrences,
@@ -1506,6 +1519,7 @@ bool VoctreeLocalizer::localizeRig_opengv(const std::vector<feature::MapRegionsP
 bool VoctreeLocalizer::localizeRig_naive(const std::vector<feature::MapRegionsPerDesc> & vec_queryRegions,
                                           const std::vector<std::pair<std::size_t, std::size_t> > &vec_imageSize,
                                           const LocalizerParameters *parameters,
+                                          std::mt19937 & randomNumberGenerator,
                                           std::vector<camera::PinholeRadialK3 > &vec_queryIntrinsics,
                                           const std::vector<geometry::Pose3 > &vec_subPoses,
                                           geometry::Pose3 &rigPose,
@@ -1524,7 +1538,7 @@ bool VoctreeLocalizer::localizeRig_naive(const std::vector<feature::MapRegionsPe
   std::vector<bool> isLocalized(numCams, false);
   for(size_t i = 0; i < numCams; ++i)
   {
-    isLocalized[i] = localize(vec_queryRegions[i], vec_imageSize[i], parameters, true /*useInputIntrinsics*/, vec_queryIntrinsics[i], vec_localizationResults[i]);
+    isLocalized[i] = localize(vec_queryRegions[i], vec_imageSize[i], parameters, randomNumberGenerator, true /*useInputIntrinsics*/, vec_queryIntrinsics[i], vec_localizationResults[i]);
     assert(isLocalized[i] == vec_localizationResults[i].isValid());
     if(!isLocalized[i])
     {

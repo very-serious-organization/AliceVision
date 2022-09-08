@@ -19,6 +19,7 @@
 #include <aliceVision/system/Logger.hpp>
 #include <aliceVision/system/cmdline.hpp>
 #include <aliceVision/system/main.hpp>
+#include <aliceVision/utils/convert.hpp>
 
 #include <boost/filesystem.hpp>
 #include <boost/progress.hpp>
@@ -51,14 +52,6 @@ namespace bfs = boost::filesystem;
 namespace bacc = boost::accumulators;
 namespace po = boost::program_options;
 
-std::string myToString(std::size_t i, std::size_t zeroPadding)
-{
-  std::stringstream ss;
-  ss << std::setw(zeroPadding) << std::setfill('0') << i;
-  return ss.str();
-}
-
-
 int aliceVision_main(int argc, char** argv)
 {
   // common parameters
@@ -75,7 +68,7 @@ int aliceVision_main(int argc, char** argv)
   /// the describer types name to use for the matching
   std::string matchDescTypeNames = feature::EImageDescriberType_enumToString(feature::EImageDescriberType::SIFT);
   /// the preset for the feature extractor
-  feature::EImageDescriberPreset featurePreset = feature::EImageDescriberPreset::NORMAL;
+  feature::ConfigurationPreset featDescPreset;
   /// the describer types to use for the matching
   std::vector<feature::EImageDescriberType> matchDescTypes;
   /// the estimator to use for resection
@@ -116,7 +109,8 @@ int aliceVision_main(int argc, char** argv)
   /// the export file
   std::string exportFile = "trackedcameras.abc"; 
 #endif
-  
+  int randomSeed = std::mt19937::default_seed;
+
   std::size_t numCameras = 0;
   po::options_description allParams("This program is used to calibrate a camera rig composed of internally calibrated cameras."
   "It takes as input a synchronized sequence of N cameras and it saves the estimated "
@@ -142,7 +136,7 @@ int aliceVision_main(int argc, char** argv)
           "Folder containing the .desc.")
       ("matchDescTypes", po::value<std::string>(&matchDescTypeNames)->default_value(matchDescTypeNames),
           "The describer types to use for the matching")
-      ("preset", po::value<feature::EImageDescriberPreset>(&featurePreset)->default_value(featurePreset), 
+      ("preset", po::value<feature::EImageDescriberPreset>(&featDescPreset.descPreset)->default_value(featDescPreset.descPreset), 
           "Preset for the feature extractor when localizing a new image "
           "{LOW,MEDIUM,NORMAL,HIGH,ULTRA}")
       ("resectionEstimator", po::value<robustEstimation::ERobustEstimator>(&resectionEstimator)->default_value(resectionEstimator),
@@ -157,7 +151,10 @@ int aliceVision_main(int argc, char** argv)
           "Maximum reprojection error (in pixels) allowed for resectioning. If set "
           "to 0 it lets the ACRansac select an optimal value.")
       ("maxInputFrames", po::value<std::size_t>(&maxInputFrames)->default_value(maxInputFrames), 
-          "Maximum number of frames to read in input. 0 means no limit.");
+          "Maximum number of frames to read in input. 0 means no limit.")
+      ("randomSeed", po::value<int>(&randomSeed)->default_value(randomSeed),
+          "This seed value will generate a sequence using a linear random generator. Set -1 to use a random seed.")
+      ;
 
   // parameters for voctree localizer
   po::options_description voctreeParams("Parameters specific for the vocabulary tree-based localizer");
@@ -182,8 +179,8 @@ int aliceVision_main(int argc, char** argv)
       ("nNearestKeyFrames", po::value<std::size_t>(&nNearestKeyFrames)->default_value(nNearestKeyFrames),
           "[cctag] Number of images to retrieve in database")
 #endif
-  ;
-  
+      ;
+
   // output options
   po::options_description outputParams("Options for the output of the localizer");
   outputParams.add_options()  
@@ -253,6 +250,8 @@ int aliceVision_main(int argc, char** argv)
   ALICEVISION_COUT("Program called with the following parameters:");
   ALICEVISION_COUT(vm);
 
+  std::mt19937 randomNumberGenerator(randomSeed == -1 ? std::random_device()() : randomSeed);
+
   std::unique_ptr<localization::LocalizerParameters> param;
   
   std::unique_ptr<localization::ILocalizer> localizer;
@@ -302,7 +301,7 @@ int aliceVision_main(int argc, char** argv)
   assert(param);
   
   // set other common parameters
-  param->_featurePreset = featurePreset;
+  param->_featurePreset = featDescPreset;
   param->_refineIntrinsics = refineIntrinsics;
   param->_errorMax = resectionErrorMax;
   param->_resectionEstimator = resectionEstimator;
@@ -380,13 +379,15 @@ int aliceVision_main(int argc, char** argv)
     while(feed.readImage(imageGrey, *queryIntrinsics, currentImgName, hasIntrinsics))
     {
       ALICEVISION_COUT("******************************");
-      ALICEVISION_COUT("Stream " << idCamera << " Frame " << myToString(currentFrame, 4) << "/" << nbFrames << " : (" << iInputFrame << "/" << nbFramesToProcess << ")");
+      ALICEVISION_COUT("Stream " << idCamera << " Frame " << utils::toStringZeroPadded(currentFrame, 4)
+                       << "/" << nbFrames << " : (" << iInputFrame << "/" << nbFramesToProcess << ")");
       ALICEVISION_COUT("******************************");
       auto detect_start = std::chrono::steady_clock::now();
       localization::LocalizationResult localizationResult;
       localizer->setCudaPipe( idCamera );
       const bool ok = localizer->localize(imageGrey,
                                           param.get(),
+                                          randomNumberGenerator,
                                           hasIntrinsics/*useInputIntrinsics*/,
                                           *queryIntrinsics,
                                           localizationResult);
@@ -401,7 +402,7 @@ int aliceVision_main(int argc, char** argv)
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_ALEMBIC)
       if(localizationResult.isValid())
       {
-        exporter.addCamera("camera"+std::to_string(idCamera)+"."+myToString(currentFrame,4),
+        exporter.addCamera("camera"+std::to_string(idCamera)+"." + utils::toStringZeroPadded(currentFrame, 4),
                            sfmData::View(subMediaFilepath, currentFrame, currentFrame),
                            &pose,
                            queryIntrinsics);
@@ -409,7 +410,7 @@ int aliceVision_main(int argc, char** argv)
       else
       {
         // @fixme for now just add a fake camera so that it still can be see in MAYA
-        exporter.addCamera("camera"+std::to_string(idCamera)+".V."+myToString(currentFrame,4),
+        exporter.addCamera("camera"+std::to_string(idCamera)+".V." + utils::toStringZeroPadded(currentFrame, 4),
                            sfmData::View(subMediaFilepath, currentFrame, currentFrame),
                            &pose,
                            queryIntrinsics);

@@ -31,7 +31,6 @@
 #define ALICEVISION_SOFTWARE_VERSION_MINOR 0
 
 using namespace svg;
-using namespace std;
 using namespace aliceVision;
 using namespace aliceVision::image;
 using namespace aliceVision::matching;
@@ -43,8 +42,8 @@ int main(int argc, char **argv)
 {
   std::string filenameLeft;
   std::string filenameRight;
-  std::string describerPreset = feature::EImageDescriberPreset_enumToString(feature::EImageDescriberPreset::NORMAL);
   std::string describerTypesName = feature::EImageDescriberType_enumToString(feature::EImageDescriberType::SIFT);
+  feature::ConfigurationPreset featDescPreset;
   
   po::options_description allParams("AliceVision Sample robustFundamental");
   allParams.add_options()
@@ -54,7 +53,7 @@ int main(int argc, char **argv)
       "Right image.")
     ("describerTypes,d", po::value<std::string>(&describerTypesName)->default_value(describerTypesName),
          feature::EImageDescriberType_informations().c_str())
-    ("describerPreset,p", po::value<std::string>(&describerPreset)->default_value(describerPreset),
+    ("describerPreset,p", po::value<feature::EImageDescriberPreset>(&featDescPreset.descPreset)->default_value(featDescPreset.descPreset),
       "Control the ImageDescriber configuration (low, medium, normal, high, ultra).\n"
       "Configuration 'ultra' can take long time !");
 
@@ -82,6 +81,7 @@ int main(int argc, char **argv)
     ALICEVISION_COUT("Usage:\n\n" << allParams);
     return EXIT_FAILURE;
   }
+  std::mt19937 randomNumberGenerator;
 
   Image<float> imageLeft;
   readImage(filenameLeft, imageLeft, EImageColorSpace::LINEAR);
@@ -95,10 +95,7 @@ int main(int argc, char **argv)
   //--
   using namespace aliceVision::feature;
   std::unique_ptr<ImageDescriber> image_describer(new ImageDescriber_SIFT);
-  if (!describerPreset.empty())
-  {
-    image_describer->setConfigurationPreset(describerPreset);
-  }
+  image_describer->setConfigurationPreset(featDescPreset);
  
   std::map<IndexT, std::unique_ptr<feature::Regions> > regions_perImage;
   image_describer->describe(imageLeft, regions_perImage[0]);
@@ -112,7 +109,7 @@ int main(int argc, char **argv)
 
   // Show both images side by side
   {
-    const string out_filename = "01.features."+describerTypesName+".svg";
+    const std::string out_filename = "01.features."+describerTypesName+".svg";
     drawKeypointsSideBySide(filenameLeft,
                             imageLeftSize,
                             featsL,
@@ -127,6 +124,7 @@ int main(int argc, char **argv)
 
   // Find corresponding points
   matching::DistanceRatioMatch(
+    randomNumberGenerator,
     0.8, matching::BRUTE_FORCE_L2,
     *regions_perImage.at(0).get(),
     *regions_perImage.at(1).get(),
@@ -186,7 +184,8 @@ int main(int argc, char **argv)
       true); // configure as point to line error model.
 
     multiview::relativePose::Fundamental10PModel F;
-    const std::pair<double, double> ACRansacOut = robustEstimation::ACRANSAC(kernel, vec_inliers, 1024, &F,
+    const std::pair<double, double> ACRansacOut = robustEstimation::ACRANSAC(kernel, randomNumberGenerator, 
+      vec_inliers, 1024, &F,
       Square(4.0)); // Upper bound of authorized threshold
     
     const double & thresholdF = ACRansacOut.first;
@@ -202,7 +201,7 @@ int main(int argc, char **argv)
 
       //Show fundamental validated point and compute residuals
       std::vector<double> vec_residuals(vec_inliers.size(), 0.0);
-      svgDrawer svgStream( imageLeft.Width() + imageRight.Width(), max(imageLeft.Height(), imageRight.Height()));
+      svgDrawer svgStream(imageLeft.Width() + imageRight.Width(), std::max(imageLeft.Height(), imageRight.Height()));
       svgStream.drawImage(filenameLeft, imageLeft.Width(), imageLeft.Height());
       svgStream.drawImage(filenameRight, imageRight.Width(), imageRight.Height(), imageLeft.Width());
       for ( size_t i = 0; i < vec_inliers.size(); ++i)  
@@ -219,8 +218,8 @@ int main(int argc, char **argv)
                                        LL.coords().cast<double>(),
                                        RR.coords().cast<double>()));
       }
-      const string out_filename = "04_ACRansacFundamental.svg";
-      ofstream svgFile( out_filename.c_str() );
+      const std::string out_filename = "04_ACRansacFundamental.svg";
+      std::ofstream svgFile( out_filename.c_str() );
       svgFile << svgStream.closeSvgFile().str();
       svgFile.close();
 

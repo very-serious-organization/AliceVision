@@ -10,6 +10,7 @@ set(features_files_headers
   sift/ImageDescriber_SIFT.hpp
   sift/ImageDescriber_SIFT_vlfeat.hpp
   sift/ImageDescriber_SIFT_vlfeatFloat.hpp
+  sift/ImageDescriber_DSPSIFT_vlfeat.hpp
   sift/SIFT.hpp
   Descriptor.hpp
   feature.hpp
@@ -17,6 +18,7 @@ set(features_files_headers
   Hamming.hpp
   ImageDescriber.hpp
   imageDescriberCommon.hpp
+  imageStats.hpp
   KeypointSet.hpp
   metric.hpp
   PointFeature.hpp
@@ -31,15 +33,23 @@ set(features_files_sources
   akaze/descriptorLIOP.cpp
   akaze/ImageDescriber_AKAZE.cpp
   sift/SIFT.cpp
+  sift/ImageDescriber_DSPSIFT_vlfeat.cpp
   FeaturesPerView.cpp
   ImageDescriber.cpp
   imageDescriberCommon.cpp
+  imageStats.cpp
 )
 
 # CCTAG ImageDescriber
 if(ALICEVISION_HAVE_CCTAG)
   list(APPEND features_files_headers cctag/ImageDescriber_CCTAG.hpp)
   list(APPEND features_files_sources cctag/ImageDescriber_CCTAG.cpp)
+endif()
+
+# APRILTAG ImageDescriber
+if(ALICEVISION_HAVE_APRILTAG)
+  list(APPEND features_files_headers apriltag/ImageDescriber_APRILTAG.hpp)
+  list(APPEND features_files_sources apriltag/ImageDescriber_APRILTAG.cpp)
 endif()
 
 # PopSIFT ImageDescriber
@@ -76,6 +86,11 @@ alicevision_add_library(aliceVision_feature
 # Link CCTAG library
 if(ALICEVISION_HAVE_CCTAG)
   target_link_libraries(aliceVision_feature PUBLIC CCTag::CCTag)
+endif()
+
+# Link APRILTAG library
+if(ALICEVISION_HAVE_APRILTAG)
+  target_link_libraries(aliceVision_feature PUBLIC apriltag::apriltag)
 endif()
 
 # Link PopSIFT library

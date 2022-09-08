@@ -23,6 +23,8 @@ enum class EImageDescriberType: unsigned char
   , SIFT = 10
   , SIFT_FLOAT = 11
   , SIFT_UPRIGHT = 12
+  , DSPSIFT = 13
+
   , AKAZE = 20
   , AKAZE_LIOP = 21
   , AKAZE_MLDB = 22
@@ -37,6 +39,10 @@ enum class EImageDescriberType: unsigned char
   , SIFT_OCV = 40
 #endif
   , AKAZE_OCV = 41
+#endif
+
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+  , APRILTAG16H5 = 50
 #endif
 };
 
@@ -70,10 +76,16 @@ std::vector<EImageDescriberType> EImageDescriberType_stringToEnums(const std::st
 inline bool isMarker(EImageDescriberType imageDescriberType)
 {
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
-    return imageDescriberType == EImageDescriberType::CCTAG3 || imageDescriberType == EImageDescriberType::CCTAG4;
-#else
-    return false;
+    if (imageDescriberType == EImageDescriberType::CCTAG3 || imageDescriberType == EImageDescriberType::CCTAG4) {
+      return true;
+    }
 #endif
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+    if (imageDescriberType == EImageDescriberType::APRILTAG16H5) {
+      return true;
+    }
+#endif
+  return false;
 }
 
 /**
@@ -85,16 +97,24 @@ inline float getStrongSupportCoeff(EImageDescriberType imageDescriberType)
 {
   switch(imageDescriberType)
   {
-    case EImageDescriberType::SIFT:          return 0.14f;
-    case EImageDescriberType::SIFT_FLOAT:    return 0.14f;
-    case EImageDescriberType::SIFT_UPRIGHT:  return 0.14f;
-    case EImageDescriberType::AKAZE:         return 0.14f;
-    case EImageDescriberType::AKAZE_LIOP:    return 0.14f;
-    case EImageDescriberType::AKAZE_MLDB:    return 0.14f;
+    case EImageDescriberType::SIFT:
+    case EImageDescriberType::SIFT_FLOAT:
+    case EImageDescriberType::SIFT_UPRIGHT:
+    case EImageDescriberType::DSPSIFT:
+    case EImageDescriberType::AKAZE:
+    case EImageDescriberType::AKAZE_LIOP:
+    case EImageDescriberType::AKAZE_MLDB:
+        return 0.14f;
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
-    case EImageDescriberType::CCTAG3:        return 1.0f;
-    case EImageDescriberType::CCTAG4:        return 1.0f;
+    case EImageDescriberType::CCTAG3:
+    case EImageDescriberType::CCTAG4:
+        return 1.0f;
+#endif
+
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+    case EImageDescriberType::APRILTAG16H5:
+        return 1.0f;
 #endif
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OPENCV)
@@ -104,7 +124,8 @@ inline float getStrongSupportCoeff(EImageDescriberType imageDescriberType)
     case EImageDescriberType::AKAZE_OCV:     return 0.14f;
 #endif //ALICEVISION_HAVE_OPENCV
 
-    case EImageDescriberType::UNKNOWN:       return 1.0f;
+    case EImageDescriberType::UNKNOWN:
+        return 1.0f;
     case EImageDescriberType::UNINITIALIZED: break; // Should throw an error.
   }
   throw std::out_of_range("Invalid imageDescriber enum");

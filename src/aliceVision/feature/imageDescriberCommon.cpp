@@ -29,6 +29,9 @@ std::string EImageDescriberType_informations()
           "* cctag3: Concentric circles markers with 3 crowns.\n"
           "* cctag4: Concentric circles markers with 4 crowns.\n"
 #endif
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+          "* tag16h5: AprilTag family tag16h5.\n"
+#endif
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OPENCV)
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OCVSIFT)
           "* sift_ocv: OpenCV implementation of SIFT describer.\n"
@@ -45,6 +48,9 @@ std::string EImageDescriberType_enumToString(EImageDescriberType imageDescriberT
     case EImageDescriberType::SIFT:          return "sift";
     case EImageDescriberType::SIFT_FLOAT:    return "sift_float";
     case EImageDescriberType::SIFT_UPRIGHT:  return "sift_upright";
+
+    case EImageDescriberType::DSPSIFT:       return "dspsift";
+
     case EImageDescriberType::AKAZE:         return "akaze";
     case EImageDescriberType::AKAZE_LIOP:    return "akaze_liop";
     case EImageDescriberType::AKAZE_MLDB:    return "akaze_mldb";
@@ -52,6 +58,10 @@ std::string EImageDescriberType_enumToString(EImageDescriberType imageDescriberT
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
     case EImageDescriberType::CCTAG3:        return "cctag3";
     case EImageDescriberType::CCTAG4:        return "cctag4";
+#endif
+
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+    case EImageDescriberType::APRILTAG16H5:  return "tag16h5";
 #endif
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OPENCV)
@@ -64,7 +74,7 @@ std::string EImageDescriberType_enumToString(EImageDescriberType imageDescriberT
     case EImageDescriberType::UNKNOWN:       return "unknown";
     case EImageDescriberType::UNINITIALIZED: break; // Should throw an error.
   }
-  throw std::out_of_range("Invalid imageDescriber enum");
+  throw std::out_of_range("Invalid imageDescriber enum: " + std::to_string(int(imageDescriberType)));
 }
 
 EImageDescriberType EImageDescriberType_stringToEnum(const std::string& imageDescriberType)
@@ -75,6 +85,9 @@ EImageDescriberType EImageDescriberType_stringToEnum(const std::string& imageDes
   if(type == "sift")          return EImageDescriberType::SIFT;
   if(type == "sift_float")    return EImageDescriberType::SIFT_FLOAT;
   if(type == "sift_upright")  return EImageDescriberType::SIFT_UPRIGHT;
+
+  if(type == "dspsift")       return EImageDescriberType::DSPSIFT;
+
   if(type == "akaze")         return EImageDescriberType::AKAZE;
   if(type == "akaze_liop")    return EImageDescriberType::AKAZE_LIOP;
   if(type == "akaze_mldb")    return EImageDescriberType::AKAZE_MLDB;
@@ -82,6 +95,10 @@ EImageDescriberType EImageDescriberType_stringToEnum(const std::string& imageDes
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
   if(type == "cctag3")        return EImageDescriberType::CCTAG3;
   if(type == "cctag4")        return EImageDescriberType::CCTAG4;
+#endif
+
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+  if(type == "tag16h5")       return EImageDescriberType::APRILTAG16H5;
 #endif
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_OPENCV)

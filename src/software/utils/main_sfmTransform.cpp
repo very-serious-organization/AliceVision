@@ -28,6 +28,8 @@ using namespace aliceVision;
 
 namespace po = boost::program_options;
 
+namespace {
+
 /**
  * @brief Alignment method enum
  */
@@ -35,10 +37,12 @@ enum class EAlignmentMethod: unsigned char
 {
   TRANSFORMATION = 0
   , MANUAL
-  , AUTO_FROM_CAMERAS
-  , AUTO_FROM_LANDMARKS
-  , FROM_SINGLE_CAMERA
-  , FROM_MARKERS
+  , AUTO_FROM_CAMERAS,
+    AUTO_FROM_LANDMARKS,
+    FROM_SINGLE_CAMERA,
+    FROM_CENTER_CAMERA,
+    FROM_MARKERS,
+    FROM_GPS
 };
 
 /**
@@ -55,7 +59,9 @@ std::string EAlignmentMethod_enumToString(EAlignmentMethod alignmentMethod)
     case EAlignmentMethod::AUTO_FROM_CAMERAS:   return "auto_from_cameras";
     case EAlignmentMethod::AUTO_FROM_LANDMARKS: return "auto_from_landmarks";
     case EAlignmentMethod::FROM_SINGLE_CAMERA:  return "from_single_camera";
+    case EAlignmentMethod::FROM_CENTER_CAMERA:  return "from_center_camera";
     case EAlignmentMethod::FROM_MARKERS:        return "from_markers";
+    case EAlignmentMethod::FROM_GPS:        return "from_gps";
   }
   throw std::out_of_range("Invalid EAlignmentMethod enum");
 }
@@ -75,7 +81,9 @@ EAlignmentMethod EAlignmentMethod_stringToEnum(const std::string& alignmentMetho
   if(method == "auto_from_cameras")   return EAlignmentMethod::AUTO_FROM_CAMERAS;
   if(method == "auto_from_landmarks") return EAlignmentMethod::AUTO_FROM_LANDMARKS;
   if(method == "from_single_camera")  return EAlignmentMethod::FROM_SINGLE_CAMERA;
+  if(method == "from_center_camera")  return EAlignmentMethod::FROM_CENTER_CAMERA;
   if(method == "from_markers")        return EAlignmentMethod::FROM_MARKERS;
+  if(method == "from_gps")        return EAlignmentMethod::FROM_GPS;
   throw std::out_of_range("Invalid SfM alignment method : " + alignmentMethod);
 }
 
@@ -171,6 +179,7 @@ static void parseManualTransform(const std::string& manualTransform, double& S, 
     R = rotateMat; // Assign Rotation
 }
 
+} // namespace
 
 int aliceVision_main(int argc, char **argv)
 {
@@ -212,7 +221,8 @@ int aliceVision_main(int argc, char **argv)
         "\t- auto_from_cameras: Use cameras\n"
         "\t- auto_from_landmarks: Use landmarks\n"
         "\t- from_single_camera: Use camera specified by --tranformation\n"
-        "\t- from_markers: Use markers specified by --markers\n")
+        "\t- from_markers: Use markers specified by --markers\n"
+        "\t- from_gps: use gps metadata\n")
     ("transformation", po::value<std::string>(&transform)->default_value(transform),
       "required only for 'transformation' and 'single camera' methods:\n"
       "Transformation: Align [X,Y,Z] to +Y-axis, rotate around Y by R deg, scale by S; syntax: X,Y,Z;R;S\n"
@@ -337,15 +347,26 @@ int aliceVision_main(int argc, char **argv)
         }
         else
         {
-            sfm::computeNewCoordinateSystemFromSingleCamera(sfmData, transform, S, R, t);
+            const IndexT viewId = sfm::getViewIdFromExpression(sfmData, transform);
+            sfm::computeNewCoordinateSystemFromSingleCamera(sfmData, viewId, S, R, t);
         }
     break;
+
+    case EAlignmentMethod::FROM_CENTER_CAMERA:
+    {
+        const IndexT centerViewId = sfm::getCenterCameraView(sfmData);
+        sfm::computeNewCoordinateSystemFromSingleCamera(sfmData, centerViewId, S, R, t);
+        break;
+    }
 
     case EAlignmentMethod::FROM_MARKERS:
     {
         std::vector<feature::EImageDescriberType> markersDescTypes = {
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_CCTAG)
-            feature::EImageDescriberType::CCTAG3, feature::EImageDescriberType::CCTAG4
+            feature::EImageDescriberType::CCTAG3, feature::EImageDescriberType::CCTAG4,
+#endif
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+            feature::EImageDescriberType::APRILTAG16H5,
 #endif
         };
         std::set<feature::EImageDescriberType> usedDescTypes = sfmData.getLandmarkDescTypes();
@@ -381,6 +402,16 @@ int aliceVision_main(int argc, char **argv)
         }
         break;
     }
+      case EAlignmentMethod::FROM_GPS:
+      {
+          std::mt19937 randomNumberGenerator;
+          if(!sfm::computeNewCoordinateSystemFromGpsData(sfmData, randomNumberGenerator, S, R, t))
+          {
+              ALICEVISION_LOG_ERROR("Failed to find a valid transformation from the GPS metadata.");
+              return EXIT_FAILURE;
+          }
+          break;
+      }
   }
 
   // apply user scale
@@ -388,11 +419,21 @@ int aliceVision_main(int argc, char **argv)
   t *= userScale;
 
   if (!applyScale)
+  {
+      if (applyTranslation)
+          t = t / S;
       S = 1;
+  }
   if (!applyRotation)
+  {
+      if (applyTranslation)
+          t = R.inverse() * t;
       R = Mat3::Identity();
+  }
   if (!applyTranslation)
+  {
       t = Vec3::Zero();
+  }
 
   {
       ALICEVISION_LOG_INFO("Transformation:" << std::endl

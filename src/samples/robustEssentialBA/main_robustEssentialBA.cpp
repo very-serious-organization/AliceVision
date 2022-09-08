@@ -36,9 +36,10 @@ using namespace aliceVision::camera;
 using namespace aliceVision::geometry;
 using namespace aliceVision::sfm;
 using namespace svg;
-using namespace std;
 
 namespace fs = boost::filesystem;
+
+namespace {
 
 /// Read intrinsic K matrix from a file (ASCII)
 /// F 0 ppx
@@ -46,17 +47,19 @@ namespace fs = boost::filesystem;
 /// 0 0 1
 bool readIntrinsic(const std::string & fileName, Mat3 & K);
 
+} // namespace
+
 /// Show :
 ///  how computing an essential with know internal calibration matrix K
 ///  how refine the camera motion, focal and structure with Bundle Adjustment
 ///   way 1: independent cameras [R|t|f] and structure
 ///   way 2: independent cameras motion [R|t], shared focal [f] and structure
 int main() {
-
-  const std::string sInputDir = string("../") + string(THIS_SOURCE_DIR) + "/imageData/SceauxCastle/";
+  std::mt19937 randomNumberGenerator;
+  const std::string sInputDir = std::string("../") + std::string(THIS_SOURCE_DIR) + "/imageData/SceauxCastle/";
   Image<RGBColor> image;
-  const string jpg_filenameL = sInputDir + "100_7101.jpg";
-  const string jpg_filenameR = sInputDir + "100_7102.jpg";
+  const std::string jpg_filenameL = sInputDir + "100_7101.jpg";
+  const std::string jpg_filenameR = sInputDir + "100_7102.jpg";
 
   Image<unsigned char> imageL, imageR;
   readImage(jpg_filenameL, imageL, EImageColorSpace::NO_CONVERSION);
@@ -82,7 +85,7 @@ int main() {
   {
     Image<unsigned char> concat;
     ConcatH(imageL, imageR, concat);
-    string out_filename = "01_concat.jpg";
+    std::string out_filename = "01_concat.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -100,7 +103,7 @@ int main() {
       const PointFeature point = regionsR->Features()[i];
       DrawCircle(point.x()+imageL.Width(), point.y(), point.scale(), 255, &concat);
     }
-    string out_filename = "02_features.jpg";
+    std::string out_filename = "02_features.jpg";
     writeImage(out_filename, concat, EImageColorSpace::NO_CONVERSION);
   }
 
@@ -109,6 +112,7 @@ int main() {
   {
     // Find corresponding points
     matching::DistanceRatioMatch(
+      randomNumberGenerator,
       0.8, matching::BRUTE_FORCE_L2,
       *regions_perImage.at(0).get(),
       *regions_perImage.at(1).get(),
@@ -124,7 +128,7 @@ int main() {
       << vec_PutativeMatches.size() << " #matches with Distance Ratio filter" << std::endl;
 
     // Draw correspondences after Nearest Neighbor ratio filter
-    svgDrawer svgStream( imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
     svgStream.drawImage(jpg_filenameR, imageR.Width(), imageR.Height(), imageL.Width());
     for (size_t i = 0; i < vec_PutativeMatches.size(); ++i) {
@@ -165,7 +169,7 @@ int main() {
     std::pair<size_t, size_t> size_imaL(imageL.Width(), imageL.Height());
     std::pair<size_t, size_t> size_imaR(imageR.Width(), imageR.Height());
     RelativePoseInfo relativePose_info;
-    if (!robustRelativePose(K, K, xL, xR, relativePose_info, size_imaL, size_imaR, 256))
+    if (!robustRelativePose(K, K, xL, xR, randomNumberGenerator, relativePose_info, size_imaL, size_imaR, 256))
     {
       std::cerr << " /!\\ Robust relative pose estimation failure."
         << std::endl;
@@ -179,7 +183,7 @@ int main() {
       << std::endl;
 
     // Show Essential validated point
-    svgDrawer svgStream( imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
     svgStream.drawImage(jpg_filenameR, imageR.Width(), imageR.Height(), imageL.Width());
     for (size_t i = 0; i < relativePose_info.vec_inliers.size(); ++i)  {
@@ -221,14 +225,14 @@ int main() {
     switch (iBAType)
     {
       case 1: // Each view use it's own pinhole camera intrinsic
-        tinyScene.intrinsics[0].reset(new Pinhole(imageL.Width(), imageL.Height(), K(0, 0), K(0, 2), K(1, 2)));
-        tinyScene.intrinsics[1].reset(new Pinhole(imageR.Width(), imageR.Height(), K(0, 0), K(0, 2), K(1, 2)));
+        tinyScene.intrinsics[0].reset(new Pinhole(imageL.Width(), imageL.Height(), K(0, 0), K(1, 1), K(0, 2), K(1, 2)));
+        tinyScene.intrinsics[1].reset(new Pinhole(imageR.Width(), imageR.Height(), K(0, 0), K(1, 1), K(0, 2), K(1, 2)));
         break;
       case 2: // Shared pinhole camera intrinsic
-        tinyScene.intrinsics[0].reset(new Pinhole(imageL.Width(), imageL.Height(), K(0, 0), K(0, 2), K(1, 2)));
+        tinyScene.intrinsics[0].reset(new Pinhole(imageL.Width(), imageL.Height(), K(0, 0), K(1, 1), K(0, 2), K(1, 2)));
         break;
       case 3: // Shared pinhole camera intrinsic with radial K3 distortion
-        tinyScene.intrinsics[0].reset(new PinholeRadialK3(imageL.Width(), imageL.Height(), K(0, 0), K(0, 2), K(1, 2)));
+        tinyScene.intrinsics[0].reset(new PinholeRadialK3(imageL.Width(), imageL.Height(), K(0, 0), K(1, 1), K(0, 2), K(1, 2)));
         break;
       default:
         std::cerr << "Invalid input number" << std::endl;
@@ -274,11 +278,13 @@ int main() {
   return EXIT_SUCCESS;
 }
 
+namespace {
+
 bool readIntrinsic(const std::string & fileName, Mat3 & K)
 {
   // Load the K matrix
-  ifstream in;
-  in.open( fileName.c_str(), ifstream::in);
+  std::ifstream in;
+  in.open(fileName.c_str(), std::ifstream::in);
   if(in.is_open())  {
     for (int j=0; j < 3; ++j)
       for (int i=0; i < 3; ++i)
@@ -291,3 +297,5 @@ bool readIntrinsic(const std::string & fileName, Mat3 & K)
   }
   return true;
 }
+
+} // namespace

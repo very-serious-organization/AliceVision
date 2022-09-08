@@ -95,6 +95,8 @@ BOOST_AUTO_TEST_CASE(TriangulateNViewAlgebraic_FiveViews) {
 // is considered).
 BOOST_AUTO_TEST_CASE(Triangulate_NViewAlgebraic_WithWeights)
 {
+  makeRandomOperationsReproducible();
+
   const std::size_t nbViews = 20;
   const std::size_t nbOutliers = 8;
   
@@ -174,6 +176,10 @@ BOOST_AUTO_TEST_CASE(Triangulate_NViewIterative_FiveViews)
 //// is considered).
 BOOST_AUTO_TEST_CASE(Triangulate_NViewIterative_LORANSAC)
 {
+  makeRandomOperationsReproducible();
+
+  std::mt19937 randomNumberGenerator;
+  
   const std::size_t numTrials = 100;
   for(std::size_t trial = 0; trial < numTrials; ++ trial)
   {
@@ -211,7 +217,7 @@ BOOST_AUTO_TEST_CASE(Triangulate_NViewIterative_LORANSAC)
     std::vector<std::size_t> inliers;
     Vec4 X;
     double const threshold = 0.01; // modify the default value: 4 pixels is too much in this configuration.
-    multiview::TriangulateNViewLORANSAC(pt2d, Ps, &X, &inliers, threshold);
+    multiview::TriangulateNViewLORANSAC(pt2d, Ps, randomNumberGenerator, &X, &inliers, threshold);
     
     // check inliers are correct
     BOOST_CHECK_EQUAL(inliers.size(), nbInliers);

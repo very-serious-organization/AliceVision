@@ -28,7 +28,6 @@
 #define ALICEVISION_SOFTWARE_VERSION_MAJOR 1
 #define ALICEVISION_SOFTWARE_VERSION_MINOR 0
 
-using namespace std;
 using namespace svg;
 using namespace aliceVision;
 using namespace aliceVision::image;
@@ -83,6 +82,8 @@ int main(int argc, char **argv)
     return EXIT_FAILURE;
   }
 
+  std::mt19937 randomNumberGenerator;
+
   // -----------------------------
   // a. List images
   // b. Compute features and descriptor
@@ -95,8 +96,8 @@ int main(int argc, char **argv)
   if (!fs::exists(outputFolder))
     fs::create_directory(outputFolder);
 
-  const string jpg_filenameL = imageAFilename;
-  const string jpg_filenameR = imageBFilename;
+  const std::string jpg_filenameL = imageAFilename;
+  const std::string jpg_filenameR = imageBFilename;
 
   Image<unsigned char> imageL, imageR;
   readImage(jpg_filenameL, imageL, image::EImageColorSpace::NO_CONVERSION);
@@ -106,7 +107,9 @@ int main(int argc, char **argv)
   // Detect regions thanks to an image_describer
   //--
   using namespace aliceVision::feature;
-  std::unique_ptr<ImageDescriber> image_describer(new ImageDescriber_SIFT(SiftParams(-1)));
+  SiftParams siftParams;
+  siftParams._firstOctave = -1;
+  std::unique_ptr<ImageDescriber> image_describer(new ImageDescriber_SIFT(siftParams));
   std::map<IndexT, std::unique_ptr<feature::Regions> > regions_perImage;
   image_describer->describe(imageL, regions_perImage[0]);
   image_describer->describe(imageR, regions_perImage[1]);
@@ -122,7 +125,7 @@ int main(int argc, char **argv)
   {
     Image<unsigned char> concat;
     ConcatH(imageL, imageR, concat);
-    string out_filename = "00_images.jpg";
+    std::string out_filename = "00_images.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -140,7 +143,7 @@ int main(int argc, char **argv)
       const PointFeature point = regionsR->Features()[i];
       DrawCircle(point.x()+imageL.Width(), point.y(), point.scale(), 255, &concat);
     }
-    string out_filename = "01_features.jpg";
+    std::string out_filename = "01_features.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -149,13 +152,14 @@ int main(int argc, char **argv)
   {
     // Find corresponding points
     matching::DistanceRatioMatch(
+      randomNumberGenerator,
       0.8, matching::BRUTE_FORCE_L2,
       *regions_perImage.at(0).get(),
       *regions_perImage.at(1).get(),
       vec_PutativeMatches);
 
     // Draw correspondences after Nearest Neighbor ratio filter
-    svgDrawer svgStream( imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
     svgStream.drawImage(jpg_filenameR, imageR.Width(), imageR.Height(), imageL.Width());
     for (size_t i = 0; i < vec_PutativeMatches.size(); ++i) {
@@ -210,7 +214,7 @@ int main(int argc, char **argv)
 
   //Print K-VLD consistent matches
   {
-    svgDrawer svgStream(imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
 
     // ".svg"
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
@@ -241,9 +245,9 @@ int main(int argc, char **argv)
         }
       }
     }
-    string out_filename = "05_KVLD_Matches.svg";
+    std::string out_filename = "05_KVLD_Matches.svg";
     out_filename = (fs::path(outputFolder) / out_filename).string();
-    ofstream svgFile( out_filename.c_str() );
+    std::ofstream svgFile(out_filename.c_str());
     svgFile << svgStream.closeSvgFile().str();
     svgFile.close();
   }
@@ -251,7 +255,7 @@ int main(int argc, char **argv)
 
   {
     //Print keypoints kept by K-VLD
-    svgDrawer svgStream(imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
 
     // ".svg"
     svgStream.drawImage(jpg_filenameL, imageL.Width(), imageL.Height());
@@ -270,9 +274,9 @@ int main(int argc, char **argv)
         svgStream.drawCircle(right.x() + imageL.Width(), right.y(), 10, svgStyle().stroke("yellow", 2.0));
       }
     }
-    string out_filename = "06_KVLD_Keypoints.svg";
+    std::string out_filename = "06_KVLD_Keypoints.svg";
     out_filename = (fs::path(outputFolder) / out_filename).string();
-    ofstream svgFile( out_filename.c_str() );
+    std::ofstream svgFile(out_filename.c_str());
     svgFile << svgStream.closeSvgFile().str();
     svgFile.close();
   }
@@ -288,12 +292,12 @@ int main(int argc, char **argv)
     E);
 
   {
-    string out_filename = "07_Left-K-VLD-MASK.jpg";
+    std::string out_filename = "07_Left-K-VLD-MASK.jpg";
     out_filename = (fs::path(outputFolder) / out_filename).string();
     writeImage(out_filename, imageOutL, image::EImageColorSpace::NO_CONVERSION);
   }
   {
-    string out_filename = "08_Right-K-VLD-MASK.jpg";
+    std::string out_filename = "08_Right-K-VLD-MASK.jpg";
     out_filename = (fs::path(outputFolder) / out_filename).string();
     writeImage(out_filename, imageOutR, image::EImageColorSpace::NO_CONVERSION);
   }

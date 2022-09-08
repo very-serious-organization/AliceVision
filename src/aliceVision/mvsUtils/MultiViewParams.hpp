@@ -105,8 +105,7 @@ public:
                     const std::string& depthMapsFolder = "",
                     const std::string& depthMapsFilterFolder = "",
                     bool readFromDepthMaps = false,
-                    int downscale = 1,
-                    StaticVector<CameraMatrices>* cameras = nullptr);
+                    int downscale = 1);
 
     ~MultiViewParams();
 
@@ -177,12 +176,12 @@ public:
 
     inline int getMaxImageWidth() const
     {
-        return _maxImageWidth;
+        return _maxImageWidth / getProcessDownscale();
     }
 
     inline int getMaxImageHeight() const
     {
-        return _maxImageHeight;
+        return _maxImageHeight / getProcessDownscale();
     }
 
     inline int getNbCameras() const
@@ -249,7 +248,7 @@ public:
     double getCamPixelSizePlaneSweepAlpha(const Point3d& p, int rc, StaticVector<int>* tcams, int scale, int step) const;
 
     double getCamsMinPixelSize(const Point3d& x0, std::vector<unsigned short>* tcams) const;
-    double getCamsMinPixelSize(const Point3d& x0, StaticVector<int>& tcams) const;
+    double getCamsMinPixelSize(const Point3d& x0, const StaticVector<int>& tcams) const;
 
     bool isPixelInSourceImage(const Pixel& pixRC, int camId, int margin) const;
     bool isPixelInImage(const Pixel& pix, int camId, int margin) const;

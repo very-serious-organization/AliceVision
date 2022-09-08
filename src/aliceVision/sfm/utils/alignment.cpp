@@ -7,11 +7,13 @@
 
 #include <aliceVision/sfm/utils/alignment.hpp>
 #include <aliceVision/geometry/rigidTransformation3D.hpp>
+#include <aliceVision/stl/regex.hpp>
 
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics/stats.hpp>
 #include <boost/accumulators/statistics/min.hpp>
 #include <boost/accumulators/statistics/max.hpp>
+#include <boost/accumulators/statistics/mean.hpp>
 #include <boost/lexical_cast.hpp>
 
 #include <boost/algorithm/string/split.hpp>
@@ -59,6 +61,7 @@ std::ostream& operator<<(std::ostream& os, const MarkerWithCoord& marker)
 bool computeSimilarityFromCommonViews(const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
     const std::vector<std::pair<IndexT, IndexT>>& commonViewIds,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t)
@@ -106,7 +109,7 @@ bool computeSimilarityFromCommonViews(const sfmData::SfMData& sfmDataA,
     Mat3 R;
     std::vector<std::size_t> inliers;
 
-    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, S, t, R, inliers, true))
+    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, randomNumberGenerator, S, t, R, inliers, true))
         return false;
 
     ALICEVISION_LOG_DEBUG("There are " << reconstructedCommonViewIds.size() << " common cameras and " << inliers.size() << " were used to compute the similarity transform.");
@@ -120,6 +123,7 @@ bool computeSimilarityFromCommonViews(const sfmData::SfMData& sfmDataA,
 
 bool computeSimilarityFromCommonCameras_viewId(const sfmData::SfMData& sfmDataA,
                        const sfmData::SfMData& sfmDataB,
+                       std::mt19937 &randomNumberGenerator,
                        double* out_S,
                        Mat3* out_R,
                        Vec3* out_t)
@@ -137,12 +141,13 @@ bool computeSimilarityFromCommonCameras_viewId(const sfmData::SfMData& sfmDataA,
   {
       commonViewIds_pairs.push_back(std::make_pair(id, id));
   }
-  return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds_pairs, out_S, out_R, out_t);
+  return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds_pairs, randomNumberGenerator, out_S, out_R, out_t);
 }
 
 bool computeSimilarityFromCommonCameras_poseId(
         const sfmData::SfMData& sfmDataA,
         const sfmData::SfMData& sfmDataB,
+        std::mt19937 & randomNumberGenerator,
         double* out_S,
         Mat3* out_R,
         Vec3* out_t)
@@ -183,7 +188,7 @@ bool computeSimilarityFromCommonCameras_poseId(
     Mat3 R;
     std::vector<std::size_t> inliers;
 
-    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, S, t, R, inliers, true))
+    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, randomNumberGenerator, S, t, R, inliers, true))
         return false;
 
     ALICEVISION_LOG_DEBUG("There are " << commonPoseIds.size() << " common camera poses and " << inliers.size() << " were used to compute the similarity transform.");
@@ -273,6 +278,7 @@ bool computeSimilarityFromCommonCameras_imageFileMatching(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
     const std::string& filePatternMatching,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t)
@@ -286,7 +292,7 @@ bool computeSimilarityFromCommonCameras_imageFileMatching(
 
     ALICEVISION_LOG_DEBUG("Found " << commonViewIds.size() << " common views.");
 
-    return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds, out_S, out_R, out_t);
+    return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds, randomNumberGenerator, out_S, out_R, out_t);
 }
 
 
@@ -355,6 +361,7 @@ bool computeSimilarityFromCommonCameras_metadataMatching(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
     const std::vector<std::string>& metadataList,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t)
@@ -368,7 +375,7 @@ bool computeSimilarityFromCommonCameras_metadataMatching(
 
     ALICEVISION_LOG_DEBUG("Found " << commonViewIds.size() << " common views.");
 
-    return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds, out_S, out_R, out_t);
+    return computeSimilarityFromCommonViews(sfmDataA, sfmDataB, commonViewIds, randomNumberGenerator, out_S, out_R, out_t);
 }
 
 
@@ -406,6 +413,7 @@ std::map<std::pair<feature::EImageDescriberType, int>, IndexT> getUniqueMarkers(
 bool computeSimilarityFromCommonMarkers(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
+    std::mt19937 & randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t)
@@ -468,7 +476,7 @@ bool computeSimilarityFromCommonMarkers(
     Mat3 R;
     std::vector<std::size_t> inliers;
 
-    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, S, t, R, inliers, true))
+    if (!aliceVision::geometry::ACRansac_FindRTS(xA, xB, randomNumberGenerator, S, t, R, inliers, true))
         return false;
 
     ALICEVISION_LOG_DEBUG("There are " << commonLandmarks.size() << " common markers and " << inliers.size() << " were used to compute the similarity transform.");
@@ -552,13 +560,11 @@ void computeNewCoordinateSystemFromCameras(const sfmData::SfMData& sfmData,
   out_t = - out_S * out_R * meanPoints;
 }
 
-void computeNewCoordinateSystemFromSingleCamera(const sfmData::SfMData& sfmData,
-                                           const std::string & camName,
-                                           double& out_S,
-                                           Mat3& out_R,
-                                           Vec3& out_t)
+IndexT getViewIdFromExpression(const sfmData::SfMData& sfmData, const std::string & camName)
 {
   IndexT viewId = -1;
+
+  std::regex cameraRegex = simpleFilterToRegex_noThrow(camName);
 
   try
   {
@@ -570,16 +576,15 @@ void computeNewCoordinateSystemFromSingleCamera(const sfmData::SfMData& sfmData,
   {
     viewId = -1;
   }
-  
+
   if(viewId == -1)
   {
     for(const auto & view : sfmData.getViews())
     {
-      std::string path = view.second->getImagePath();      
-      std::size_t found = path.find(camName);
-      if (found!=std::string::npos)
+      const std::string path = view.second->getImagePath();
+      if(std::regex_match(path, cameraRegex))
       {
-          viewId = view.second->getViewId();          
+          viewId = view.second->getViewId();
           break;
       }
     }
@@ -590,36 +595,76 @@ void computeNewCoordinateSystemFromSingleCamera(const sfmData::SfMData& sfmData,
   else if(!sfmData.isPoseAndIntrinsicDefined(viewId))
     throw std::invalid_argument("The camera \"" + camName + "\" exists in the sfmData but is not reconstructed.");
 
+  return viewId;
+}
+
+IndexT getCenterCameraView(const sfmData::SfMData& sfmData)
+{
+    using namespace boost::accumulators;
+    accumulator_set<double, stats<tag::mean>> accX, accY, accZ;
+
+    for(auto& pose: sfmData.getPoses())
+    {
+        const auto& c = pose.second.getTransform().center();
+        accX(c(0));
+        accY(c(1));
+        accZ(c(2));
+    }
+    const Vec3 camerasCenter(extract::mean(accX), extract::mean(accY), extract::mean(accZ));
+
+    double minDist = std::numeric_limits<double>::max();
+    IndexT centerViewId = UndefinedIndexT;
+    for(auto& viewIt: sfmData.getViews())
+    {
+        const sfmData::View& v = *viewIt.second;
+        if(!sfmData.isPoseAndIntrinsicDefined(&v))
+            continue;
+        const auto& pose = sfmData.getPose(v);
+        const double dist = (pose.getTransform().center() - camerasCenter).norm();
+
+        if(dist < minDist)
+        {
+            minDist = dist;
+            centerViewId = v.getViewId();
+        }
+    }
+    return centerViewId;
+}
+
+void computeNewCoordinateSystemFromSingleCamera(const sfmData::SfMData& sfmData, const IndexT viewId,
+                                                double& out_S, Mat3& out_R, Vec3& out_t)
+{
   sfmData::EEXIFOrientation orientation = sfmData.getView(viewId).getMetadataOrientation();
   ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: " << int(orientation));
 
+  const sfmData::View& view = sfmData.getView(viewId);
   switch(orientation)
   {
     case sfmData::EEXIFOrientation::RIGHT:
           ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: RIGHT");
           out_R = Eigen::AngleAxisd(degreeToRadian(90.0),  Vec3(0,0,1))
-                  * sfmData.getAbsolutePose(viewId).getTransform().rotation();
+                  * sfmData.getPose(view).getTransform().rotation();
           break;
     case sfmData::EEXIFOrientation::LEFT:
           ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: LEFT");
           out_R = Eigen::AngleAxisd(degreeToRadian(270.0),  Vec3(0,0,1))
-                  * sfmData.getAbsolutePose(viewId).getTransform().rotation();
+                  * sfmData.getPose(view).getTransform().rotation();
           break;
     case sfmData::EEXIFOrientation::UPSIDEDOWN:
           ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: UPSIDEDOWN");
-          out_R = sfmData.getAbsolutePose(viewId).getTransform().rotation();
+          out_R = sfmData.getPose(view).getTransform().rotation();
           break;
     case sfmData::EEXIFOrientation::NONE:
           ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: NONE");
-          out_R = sfmData.getAbsolutePose(viewId).getTransform().rotation();
+          out_R = sfmData.getPose(view).getTransform().rotation();
           break;
     default:
           ALICEVISION_LOG_TRACE("computeNewCoordinateSystemFromSingleCamera orientation: default");
-          out_R = sfmData.getAbsolutePose(viewId).getTransform().rotation();
+          out_R = sfmData.getPose(view).getTransform().rotation();
           break;
   }
 
-  out_t = - out_R * sfmData.getAbsolutePose(viewId).getTransform().center();    
+  out_t = - out_R * sfmData.getPose(view).getTransform().center();
   out_S = 1.0;
 }
 
@@ -743,6 +788,53 @@ bool computeNewCoordinateSystemFromSpecificMarkers(const sfmData::SfMData& sfmDa
     const Mat4 RTS = Eigen::umeyama(ptsSrc, ptsDst, withScaling);
 
     return geometry::decomposeRTS(RTS, out_S, out_t, out_R);
+}
+
+
+
+bool computeNewCoordinateSystemFromGpsData(const sfmData::SfMData& sfmData, std::mt19937 &randomNumberGenerator, double& out_S, Mat3& out_R, Vec3& out_t)
+{
+    std::vector<Vec3> gpsPositions{};
+    std::vector<Vec3> centers{};
+    gpsPositions.reserve(sfmData.getPoses().size());
+    centers.reserve(sfmData.getPoses().size());
+
+    // for each reconstructed view
+    for(const auto& v : sfmData.getViews())
+    {
+        const auto viewID = v.first;
+        const auto& view = v.second;
+        // skip no pose
+        if(!(sfmData.isPoseAndIntrinsicDefined(viewID) && view->hasGpsMetadata()))
+        {
+            ALICEVISION_LOG_TRACE("Skipping view " << viewID << " because pose " << sfmData.isPoseAndIntrinsicDefined(viewID) << " and gps " << view->hasGpsMetadata());
+            continue;
+        }
+        // extract the gps position
+        gpsPositions.push_back(view->getGpsPositionFromMetadata());
+        // get the center
+        centers.push_back(sfmData.getPose(*view.get()).getTransform().center());
+    }
+
+    // if enough data try to find the transformation
+    if(gpsPositions.size() < 4)
+    {
+        ALICEVISION_LOG_INFO("Not enough points to estimate the rototranslation to align the gps");
+        return false;
+    }
+
+    Mat x1(3, centers.size());
+    Mat x2(3, gpsPositions.size());
+
+    for(Mat::Index i = 0; i < gpsPositions.size(); ++i)
+    {
+        x1.col(i) = centers[i];
+        x2.col(i) = gpsPositions[i];
+    }
+
+    std::vector<std::size_t> inliers;
+    const bool refine{true};
+    return aliceVision::geometry::ACRansac_FindRTS(x1, x2, randomNumberGenerator, out_S, out_t, out_R, inliers, refine);
 }
 
 } // namespace sfm

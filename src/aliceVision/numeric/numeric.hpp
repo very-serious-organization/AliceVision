@@ -69,9 +69,12 @@ using Eigen::Map;
 using EigenDoubleTraits = Eigen::NumTraits<double>;
 
 using Vec3 = Eigen::Vector3d;
+using Vec3i = Eigen::Vector3i;
+using Vec3f = Eigen::Vector3f;
+
 using Vec2i = Eigen::Vector2i;
 using Vec2f = Eigen::Vector2f;
-using Vec3f = Eigen::Vector3f;
+
 using Vec9 = Eigen::Matrix<double, 9, 1>;
 
 using Quaternion = Eigen::Quaternion<double>;
@@ -136,6 +139,17 @@ inline T clamp(const T & val, const T& min, const T & max)
 {
   return std::max(min, std::min(val, max));
   //(val < min) ? val : ((val>max) ? val : max);
+}
+
+inline bool isSimilar(double a, double b)
+{
+    const double diff = a - b;
+    return std::abs(diff) < 1e-8;
+}
+inline bool isSimilar(float a, float b)
+{
+    const float diff = a - b;
+    return std::abs(diff) < 1e-8f;
 }
 
 
@@ -554,5 +568,14 @@ void SplitRange(const T range_start, const T range_end, const int nb_split,
   }
 }
 
+/**
+ * This function initializes the global state of random number generators that e.g. our tests
+ * depend on. This makes it possible to have exactly reproducible program runtime behavior
+ * without random changes. In order to introduce variation in execution,
+ * ALICEVISION_RANDOM_SEED environment variable can be set to an integer value.
+ *
+ * This function is especially useful in tests where it allows to prevent random failures.
+ */
+void makeRandomOperationsReproducible();
 
 } // namespace aliceVision

@@ -57,7 +57,7 @@ int aliceVision_main(int argc, char** argv)
     int offsetRefBracketIndex = 0;
 
     hdr::EFunctionType fusionWeightFunction = hdr::EFunctionType::GAUSSIAN;
-    float highlightCorrectionFactor = 1.0f;
+    float highlightCorrectionFactor = 0.0f;
     float highlightTargetLux = 120000.0f;
 
     image::EStorageDataType storageDataType = image::EStorageDataType::Float;
@@ -159,8 +159,13 @@ int aliceVision_main(int argc, char** argv)
     }
     if(nbBrackets > 0 && (countImages % nbBrackets) != 0)
     {
-        ALICEVISION_LOG_ERROR("The input SfMData file is not compatible with the number of brackets.");
+        ALICEVISION_LOG_ERROR("The input SfMData file (" << countImages << " images) is not compatible with the number of brackets (" << nbBrackets << " brackets).");
         return EXIT_FAILURE;
+    }
+    if(nbBrackets == 1 && !byPass)
+    {
+        ALICEVISION_LOG_WARNING("Enable bypass as there is only one input bracket.");
+        byPass = true;
     }
 
     const std::size_t channelQuantization = std::pow(2, channelQuantizationPower);
@@ -229,9 +234,12 @@ int aliceVision_main(int argc, char** argv)
         // Export a new sfmData with HDR images as new Views.
         for(std::size_t g = 0; g < groupedViews.size(); ++g)
         {
-            const std::string hdrImagePath = getHdrImagePath(outputPath, g);
             std::shared_ptr<sfmData::View> hdrView = std::make_shared<sfmData::View>(*targetViews[g]);
-            hdrView->setImagePath(hdrImagePath);
+            if(!byPass)
+            {
+                const std::string hdrImagePath = getHdrImagePath(outputPath, g);
+                hdrView->setImagePath(hdrImagePath);
+            }
             outputSfm.getViews()[hdrView->getViewId()] = hdrView;
         }
 
@@ -241,6 +249,11 @@ int aliceVision_main(int argc, char** argv)
             ALICEVISION_LOG_ERROR("Can not save output sfm file at " << sfmOutputDataFilepath);
             return EXIT_FAILURE;
         }
+    }
+    if(byPass)
+    {
+        ALICEVISION_LOG_INFO("Bypass enabled, nothing to compute.");
+        return EXIT_SUCCESS;
     }
 
     hdr::rgbCurve fusionWeight(channelQuantization);
@@ -257,29 +270,38 @@ int aliceVision_main(int argc, char** argv)
 
         std::vector<image::Image<image::RGBfColor>> images(group.size());
         std::shared_ptr<sfmData::View> targetView = targetViews[g];
-        std::vector<float> exposures(group.size(), 0.0f);
+        std::vector<sfmData::ExposureSetting> exposuresSetting(group.size());
 
         // Load all images of the group
         for(std::size_t i = 0; i < group.size(); ++i)
         {
             const std::string filepath = group[i]->getImagePath();
             ALICEVISION_LOG_INFO("Load " << filepath);
-            image::readImage(filepath, images[i], image::EImageColorSpace::SRGB);
 
-            exposures[i] = group[i]->getCameraExposureSetting(/*targetView->getMetadataISO(), targetView->getMetadataFNumber()*/);
+            image::ImageReadOptions options;
+            options.outputColorSpace = image::EImageColorSpace::SRGB;
+            options.applyWhiteBalance = group[i]->getApplyWhiteBalance();
+            image::readImage(filepath, images[i], options);
+
+            exposuresSetting[i] = group[i]->getCameraExposureSetting(/*targetView->getMetadataISO(), targetView->getMetadataFNumber()*/);
         }
+        if(!sfmData::hasComparableExposures(exposuresSetting))
+        {
+            ALICEVISION_THROW_ERROR("Camera exposure settings are inconsistent.");
+        }
+        std::vector<double> exposures = getExposures(exposuresSetting);
 
         // Merge HDR images
         image::Image<image::RGBfColor> HDRimage;
         if(images.size() > 1)
         {
             hdr::hdrMerge merge;
-            float targetCameraExposure = targetView->getCameraExposureSetting();
+            sfmData::ExposureSetting targetCameraSetting = targetView->getCameraExposureSetting();
             ALICEVISION_LOG_INFO("[" << g - rangeStart << "/" << rangeSize << "] Merge " << group.size() << " LDR images " << g << "/" << groupedViews.size());
-            merge.process(images, exposures, fusionWeight, response, HDRimage, targetCameraExposure);
+            merge.process(images, exposures, fusionWeight, response, HDRimage, targetCameraSetting.getExposure());
             if(highlightCorrectionFactor > 0.0f)
             {
-                merge.postProcessHighlight(images, exposures, fusionWeight, response, HDRimage, targetCameraExposure, highlightCorrectionFactor, highlightTargetLux);
+                merge.postProcessHighlight(images, exposures, fusionWeight, response, HDRimage, targetCameraSetting.getExposure(), highlightCorrectionFactor, highlightTargetLux);
             }
         }
         else if(images.size() == 1)

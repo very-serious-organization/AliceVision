@@ -7,10 +7,10 @@
 
 #include <aliceVision/sfm/pipeline/sequential/ReconstructionEngine_sequentialSfM.hpp>
 #include <aliceVision/sfm/pipeline/RelativePoseInfo.hpp>
-#include <aliceVision/sfm/pipeline/RigSequence.hpp>
 #include <aliceVision/sfm/utils/statistics.hpp>
 #include <aliceVision/sfmDataIO/sfmDataIO.hpp>
 #include <aliceVision/sfm/BundleAdjustmentCeres.hpp>
+#include <aliceVision/sfm/BundleAdjustmentSymbolicCeres.hpp>
 #include <aliceVision/sfm/sfmFilters.hpp>
 #include <aliceVision/sfm/sfmStatistics.hpp>
 
@@ -167,35 +167,46 @@ bool ReconstructionEngine_sequentialSfM::process()
     throw std::runtime_error("No valid tracks.");
   }
 
+  if (!_sfmData.getLandmarks().empty())
+  {
+      if (_sfmData.getPoses().empty())
+        throw std::runtime_error("You cannot have landmarks without valid poses.");
+
+      // If we have already reconstructed landmarks, we need to recognize the corresponding tracks
+      // and update the landmarkIds accordingly.
+      // Note: each landmark has a corresponding track with the same id (landmarkId == trackId).
+      remapLandmarkIdsToTrackIds();
+
+      if (_params.useLocalBundleAdjustment)
+      {
+          const std::set<IndexT> reconstructedViews = _sfmData.getValidViews();
+          if (!reconstructedViews.empty())
+          {
+              // Add the reconstructed views to the LocalBA graph
+              _localStrategyGraph->updateGraphWithNewViews(_sfmData, _map_tracksPerView, reconstructedViews, _params.kMinNbOfMatches);
+              _localStrategyGraph->updateRigEdgesToTheGraph(_sfmData);
+          }
+      }
+  }
+
   // initial pair choice
   if(_sfmData.getPoses().empty())
   {
     std::vector<Pair> initialImagePairCandidates = getInitialImagePairsCandidates();
     createInitialReconstruction(initialImagePairCandidates);
   }
-  else if(_sfmData.getLandmarks().empty())
-  {
-    std::set<IndexT> prevReconstructedViews = _sfmData.getValidViews();
-    triangulate({}, prevReconstructedViews);
-    bundleAdjustment(prevReconstructedViews);
-  }
   else
   {
-    // If we have already reconstructed landmarks, we need to recognize the corresponding tracks
-    // and update the landmarkIds accordingly.
-    // Note: each landmark has a corresponding track with the same id (landmarkId == trackId).
-    remapLandmarkIdsToTrackIds();
+    // If we don't have any landmark, we need to triangulate them from the known poses.
+    // But even if we already have landmarks, we need to try to triangulate new points with the current set of parameters.
+    std::set<IndexT> prevReconstructedViews = _sfmData.getValidViews();
 
-    if(_params.useLocalBundleAdjustment)
-    {
-      const std::set<IndexT> reconstructedViews = _sfmData.getValidViews();
-      if(!reconstructedViews.empty())
-      {
-        // Add the reconstructed views to the LocalBA graph
-        _localStrategyGraph->updateGraphWithNewViews(_sfmData, _map_tracksPerView, reconstructedViews, _params.kMinNbOfMatches);
-        _localStrategyGraph->updateRigEdgesToTheGraph(_sfmData);
-      }
-    }
+    triangulate({}, prevReconstructedViews);
+    bundleAdjustment(prevReconstructedViews);
+
+    // The optimization could allow the triangulation of new landmarks
+    triangulate({}, prevReconstructedViews);
+    bundleAdjustment(prevReconstructedViews);
   }
 
   // reconstruction
@@ -371,7 +382,7 @@ void ReconstructionEngine_sequentialSfM::remapLandmarkIdsToTrackIds()
     }
   }
 
-  ALICEVISION_LOG_INFO("Landmark ids to track ids reampping: " << std::endl
+  ALICEVISION_LOG_INFO("Landmark ids to track ids remapping: " << std::endl
                         << "\t- # tracks: " << _map_tracks.size() << std::endl
                         << "\t- # input landmarks: " << landmarks.size() << std::endl
                         << "\t- # output landmarks: " << _sfmData.getLandmarks().size());
@@ -465,7 +476,7 @@ double ReconstructionEngine_sequentialSfM::incrementalReconstruction()
       ++resectionId;
     }
 
-    if(_params.useRigConstraint && !_sfmData.getRigs().empty())
+    if(_params.rig.useRigConstraint && !_sfmData.getRigs().empty())
     {
       ALICEVISION_LOG_INFO("Rig(s) calibration start");
 
@@ -664,7 +675,7 @@ bool ReconstructionEngine_sequentialSfM::bundleAdjustment(std::set<IndexT>& newR
     }
   }
 
-  BundleAdjustmentCeres BA(options);
+  BundleAdjustmentCeres BA(options, _params.minNbCamerasToRefinePrincipalPoint);
 
   // give the local strategy graph is local strategy is enable
   if(enableLocalStrategy)
@@ -846,7 +857,7 @@ void ReconstructionEngine_sequentialSfM::calibrateRigs(std::set<IndexT>& updated
 {
   for(const std::pair<IndexT, Rig>& rigPair : _sfmData.getRigs())
   {
-    RigSequence sequence(_sfmData, rigPair.first);
+    RigSequence sequence(_sfmData, rigPair.first, _params.rig);
     sequence.init(_map_tracksPerView);
     sequence.updateSfM(updatedViews);
   }
@@ -1106,7 +1117,7 @@ bool ReconstructionEngine_sequentialSfM::makeInitialPair3D(const Pair& currentPa
   const std::pair<std::size_t, std::size_t> imageSizeI(camI->w(), camI->h());
   const std::pair<std::size_t, std::size_t> imageSizeJ(camJ->w(), camJ->h());
 
-  if(!robustRelativePose(camI->K(), camJ->K(), xI, xJ, relativePoseInfo, imageSizeI, imageSizeJ, 4096))
+  if(!robustRelativePose(camI->K(), camJ->K(), xI, xJ, _randomNumberGenerator, relativePoseInfo, imageSizeI, imageSizeJ, 4096))
   {
     ALICEVISION_LOG_WARNING("Robust estimation failed to compute E for this pair");
     return false;
@@ -1201,8 +1212,7 @@ bool ReconstructionEngine_sequentialSfM::makeInitialPair3D(const Pair& currentPa
   return !_sfmData.structure.empty();
 }
 
-bool ReconstructionEngine_sequentialSfM::getBestInitialImagePairs(std::vector<Pair>& out_bestImagePairs, IndexT filterViewId) const
-{
+bool ReconstructionEngine_sequentialSfM::getBestInitialImagePairs(std::vector<Pair>& out_bestImagePairs, IndexT filterViewId) {
   // From the k view pairs with the highest number of verified matches
   // select a pair that have the largest baseline (mean angle between its bearing vectors).
   
@@ -1305,7 +1315,7 @@ bool ReconstructionEngine_sequentialSfM::getBestInitialImagePairs(std::vector<Pa
     
     const bool relativePoseSuccess = robustRelativePose(
           camI->K(), camJ->K(),
-          xI, xJ, relativePose_info,
+          xI, xJ, _randomNumberGenerator, relativePose_info,
           std::make_pair(camI->w(), camI->h()), std::make_pair(camJ->w(), camJ->h()),
           1024);
     
@@ -1473,6 +1483,7 @@ bool ReconstructionEngine_sequentialSfM::computeResection(const IndexT viewId, R
   const bool bResection = sfm::SfMLocalizer::Localize(
       Pair(view_I->getWidth(), view_I->getHeight()),
       resectionData.optionalIntrinsic.get(),
+      _randomNumberGenerator,
       resectionData,
       resectionData.pose, 
       _params.localizerEstimator
@@ -1565,7 +1576,7 @@ void ReconstructionEngine_sequentialSfM::updateScene(const IndexT viewIndex, con
   {
     const Vec3 X = resectionData.pt3D.col(i);
     const Vec2 x = resectionData.pt2D.col(i);
-    const Vec2 residual = resectionData.optionalIntrinsic->residual(resectionData.pose, X, x);
+    const Vec2 residual = resectionData.optionalIntrinsic->residual(resectionData.pose, X.homogeneous(), x);
     if (residual.norm() < resectionData.error_max &&
         resectionData.pose.depth(X) > 0)
     {
@@ -1738,8 +1749,8 @@ void ReconstructionEngine_sequentialSfM::triangulate_multiViewsLORANSAC(SfMData&
       if (angleBetweenRays(poseI, camI.get(), poseJ, camJ.get(), xI, xJ) < _params.minAngleForTriangulation ||
           poseI.depth(X_euclidean) < 0 || 
           poseJ.depth(X_euclidean) < 0 || 
-          camI->residual(poseI, X_euclidean, xI).norm() > acThresholdI || 
-          camJ->residual(poseJ, X_euclidean, xJ).norm() > acThresholdJ)
+          camI->residual(poseI, X_euclidean.homogeneous(), xI).norm() > acThresholdI || 
+          camJ->residual(poseJ, X_euclidean.homogeneous(), xJ).norm() > acThresholdJ)
         isValidTrack = false;
     }
     else 
@@ -1778,7 +1789,7 @@ void ReconstructionEngine_sequentialSfM::triangulate_multiViewsLORANSAC(SfMData&
       Vec4 X_homogeneous = Vec4::Zero();
       std::vector<std::size_t> inliersIndex;
       
-      multiview::TriangulateNViewLORANSAC(features, Ps, &X_homogeneous, &inliersIndex, 8.0);
+      multiview::TriangulateNViewLORANSAC(features, Ps, _randomNumberGenerator, &X_homogeneous, &inliersIndex, 8.0);
       
       homogeneousToEuclidean(X_homogeneous, &X_euclidean);     
       
@@ -1909,7 +1920,7 @@ void ReconstructionEngine_sequentialSfM::triangulate_2Views(SfMData& scene, cons
             Landmark& landmark = scene.structure.at(trackId);
             if (landmark.observations.count(I) == 0)
             {
-              const Vec2 residual = camI->residual(poseI, landmark.X, xI);
+              const Vec2 residual = camI->residual(poseI, landmark.X.homogeneous(), xI);
               // TODO: scale in residual
               const auto& acThresholdIt = _map_ACThreshold.find(I);
               // TODO assert(acThresholdIt != _map_ACThreshold.end());
@@ -1923,7 +1934,7 @@ void ReconstructionEngine_sequentialSfM::triangulate_2Views(SfMData& scene, cons
             }
             if (landmark.observations.count(J) == 0)
             {
-              const Vec2 residual = camJ->residual(poseJ, landmark.X, xJ);
+              const Vec2 residual = camJ->residual(poseJ, landmark.X.homogeneous(), xJ);
               const auto& acThresholdIt = _map_ACThreshold.find(J);
               // TODO assert(acThresholdIt != _map_ACThreshold.end());
               const double acThreshold = (acThresholdIt != _map_ACThreshold.end()) ? acThresholdIt->second : 4.0;
@@ -1957,8 +1968,8 @@ void ReconstructionEngine_sequentialSfM::triangulate_2Views(SfMData& scene, cons
           //  - Check positive depth
           //  - Check residual values
           const double angle = angleBetweenRays(poseI, camI.get(), poseJ, camJ.get(), xI, xJ);
-          const Vec2 residualI = camI->residual(poseI, X_euclidean, xI);
-          const Vec2 residualJ = camJ->residual(poseJ, X_euclidean, xJ);
+          const Vec2 residualI = camI->residual(poseI, X_euclidean.homogeneous(), xI);
+          const Vec2 residualJ = camJ->residual(poseJ, X_euclidean.homogeneous(), xJ);
           
           // TODO assert(acThresholdIt != _map_ACThreshold.end());
           

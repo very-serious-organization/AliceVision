@@ -30,6 +30,8 @@ inline float zeroOneRand()
 
 BOOST_AUTO_TEST_CASE(LIGHTING_ESTIMATION_Lambertian_GT)
 {
+  makeRandomOperationsReproducible();
+
   const std::size_t sx = 4;
   const std::size_t sy = 3;
 
@@ -67,8 +69,11 @@ BOOST_AUTO_TEST_CASE(LIGHTING_ESTIMATION_Lambertian_GT)
   }
 
   // Retrieve unknown lighting
+  LighthingEstimator estimator;
   LightingVector lightingEst;
-  estimateLigthing(lightingEst, albedoSynt, pictureGenerated, normalsSynt);
+
+  estimator.addImage(albedoSynt, pictureGenerated, normalsSynt);
+  estimator.estimateLigthing(lightingEst);
 
   const float epsilon = 1e-3f;
   EXPECT_MATRIX_NEAR(lightingEst, lightingSynt, epsilon);
@@ -77,6 +82,8 @@ BOOST_AUTO_TEST_CASE(LIGHTING_ESTIMATION_Lambertian_GT)
 
 BOOST_AUTO_TEST_CASE(LIGHTING_ESTIMATION_Lambertian_noise)
 {
+  makeRandomOperationsReproducible();
+
   const std::size_t sx = 500;
   const std::size_t sy = 300;
 
@@ -117,8 +124,11 @@ BOOST_AUTO_TEST_CASE(LIGHTING_ESTIMATION_Lambertian_noise)
   }
 
   // Retrieve unknown lighting
+  LighthingEstimator estimator;
   LightingVector lightingEst;
-  estimateLigthing(lightingEst, albedoSynt, pictureGenerated, normalsSynt);
+
+  estimator.addImage(albedoSynt, pictureGenerated, normalsSynt);
+  estimator.estimateLigthing(lightingEst);
 
   const float epsilon = 1e-2f;
   EXPECT_MATRIX_NEAR(lightingEst, lightingSynt, epsilon);

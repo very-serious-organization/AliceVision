@@ -24,6 +24,7 @@
 #include <set>
 #include <iterator>
 #include <iomanip>
+#include <fstream>
 
 // These constants define the current software version.
 // They must be updated when the command line is changed.
@@ -40,8 +41,42 @@ using namespace aliceVision::sfmDataIO;
 namespace po = boost::program_options;
 namespace fs = boost::filesystem;
 
+template <class ImageT, class MaskFuncT>
+void process(const std::string &dstColorImage, const IntrinsicBase* cam, const oiio::ParamValueList & metadata, const std::string & srcImage, bool evCorrection, float exposureCompensation, MaskFuncT && maskFunc)
+{
+  ImageT image, image_ud;
+  readImage(srcImage, image, image::EImageColorSpace::LINEAR);
+
+  //exposure correction
+  if(evCorrection)
+  {
+      for(int pix = 0; pix < image.Width() * image.Height(); ++pix)
+      {
+          image(pix) = image(pix) * exposureCompensation;
+      }
+  }
+
+  // mask
+  maskFunc(image);
+
+  // undistort
+  if(cam->isValid() && cam->hasDistortion())
+  {
+    // undistort the image and save it
+    using Pix = typename ImageT::Tpixel;
+    Pix pixZero(Pix::Zero());
+    UndistortImage(image, cam, image_ud, pixZero);
+    writeImage(dstColorImage, image_ud, image::EImageColorSpace::AUTO, metadata);
+  }
+  else
+  {
+    writeImage(dstColorImage, image, image::EImageColorSpace::AUTO, metadata);
+  }
+}
+
 bool prepareDenseScene(const SfMData& sfmData,
                        const std::vector<std::string>& imagesFolders,
+                       const std::vector<std::string>& masksFolders,
                        int beginIndex,
                        int endIndex,
                        const std::string& outFolder,
@@ -81,8 +116,8 @@ bool prepareDenseScene(const SfMData& sfmData,
   boost::progress_display progressBar(viewIds.size(), std::cout, "Exporting Scene Undistorted Images\n");
 
   // for exposure correction
-  const float medianCameraExposure = sfmData.getMedianCameraExposureSetting();
-  ALICEVISION_LOG_INFO("Median Camera Exposure: " << medianCameraExposure << ", Median EV: " << std::log2(1.0f/medianCameraExposure));
+  const double medianCameraExposure = sfmData.getMedianCameraExposureSetting().getExposure();
+  ALICEVISION_LOG_INFO("Median Camera Exposure: " << medianCameraExposure << ", Median EV: " << std::log2(1.0/medianCameraExposure));
 
 #pragma omp parallel for num_threads(3)
   for(int i = 0; i < viewIds.size(); ++i)
@@ -194,37 +229,41 @@ bool prepareDenseScene(const SfMData& sfmData,
       }
       const std::string dstColorImage = (fs::path(outFolder) / (baseFilename + "." + image::EImageFileType_enumToString(outputFileType))).string();
       const IntrinsicBase* cam = iterIntrinsic->second.get();
-      Image<RGBfColor> image, image_ud;
-
-      readImage(srcImage, image, image::EImageColorSpace::LINEAR);
 
       // add exposure values to images metadata
-      float cameraExposure = view->getCameraExposureSetting();
-      float ev = std::log2(1.0 / cameraExposure);
-      float exposureCompensation = medianCameraExposure / cameraExposure;
-      metadata.push_back(oiio::ParamValue("AliceVision:EV", ev));
+      const double cameraExposure = view->getCameraExposureSetting().getExposure();
+      const double ev = std::log2(1.0 / cameraExposure);
+      const float exposureCompensation = float(medianCameraExposure / cameraExposure);
+      metadata.push_back(oiio::ParamValue("AliceVision:EV", float(ev)));
       metadata.push_back(oiio::ParamValue("AliceVision:EVComp", exposureCompensation));
 
-      //exposure correction
       if(evCorrection)
       {
-          ALICEVISION_LOG_INFO("View: " << viewId << ", Ev: " << ev << ", Ev compensation: " << exposureCompensation);
+          ALICEVISION_LOG_INFO("image " << viewId << ", exposure: " << cameraExposure << ", Ev " << ev << " Ev compensation: " + std::to_string(exposureCompensation));
+      }
+
+      image::Image<unsigned char> mask;
+      if(tryLoadMask(&mask, masksFolders, viewId, srcImage))
+      {
+        process<Image<RGBAfColor>>(dstColorImage, cam, metadata, srcImage, evCorrection, exposureCompensation, [&mask] (Image<RGBAfColor> & image)
+        {
+          if(image.Width() * image.Height() != mask.Width() * mask.Height())
+          {
+            ALICEVISION_LOG_WARNING("Invalid image mask size: mask is ignored.");
+            return;
+          }
 
           for(int pix = 0; pix < image.Width() * image.Height(); ++pix)
-              image(pix) = image(pix) * exposureCompensation;
-
-      }
-      
-      // undistort
-      if(cam->isValid() && cam->hasDistortion())
-      {
-        // undistort the image and save it
-        UndistortImage(image, cam, image_ud, FBLACK);
-        writeImage(dstColorImage, image_ud, image::EImageColorSpace::AUTO, metadata);
+          {
+            const bool masked = (mask(pix) == 0);
+            image(pix).a() = masked ? 0.f : 1.f;
+          }
+        });
       }
       else
       {
-        writeImage(dstColorImage, image, image::EImageColorSpace::AUTO, metadata);
+        const auto noMaskingFunc = [] (Image<RGBAfColor> & image) {};
+        process<Image<RGBAfColor>>(dstColorImage, cam, metadata, srcImage, evCorrection, exposureCompensation, noMaskingFunc);
       }
     }
 
@@ -244,6 +283,7 @@ int aliceVision_main(int argc, char *argv[])
   std::string outFolder;
   std::string outImageFileTypeName = image::EImageFileType_enumToString(image::EImageFileType::EXR);
   std::vector<std::string> imagesFolders;
+  std::vector<std::string> masksFolders;
   int rangeStart = -1;
   int rangeSize = 1;
   bool saveMetadata = true;
@@ -263,6 +303,9 @@ int aliceVision_main(int argc, char *argv[])
   optionalParams.add_options()
     ("imagesFolders",  po::value<std::vector<std::string>>(&imagesFolders)->multitoken(),
       "Use images from specific folder(s) instead of those specify in the SfMData file.\n"
+      "Filename should be the same or the image uid.")
+    ("masksFolders", po::value<std::vector<std::string>>(&masksFolders)->multitoken(),
+      "Use masks from specific folder(s).\n"
       "Filename should be the same or the image uid.")
     ("outputFileType", po::value<std::string>(&outImageFileTypeName)->default_value(outImageFileTypeName),
         image::EImageFileType_informations().c_str())
@@ -353,7 +396,7 @@ int aliceVision_main(int argc, char *argv[])
   }
 
   // export
-  if(prepareDenseScene(sfmData, imagesFolders, rangeStart, rangeEnd, outFolder, outputFileType, saveMetadata, saveMatricesTxtFiles, evCorrection))
+  if(prepareDenseScene(sfmData, imagesFolders, masksFolders, rangeStart, rangeEnd, outFolder, outputFileType, saveMetadata, saveMatricesTxtFiles, evCorrection))
     return EXIT_SUCCESS;
 
   return EXIT_FAILURE;

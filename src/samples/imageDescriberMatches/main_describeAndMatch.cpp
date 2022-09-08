@@ -25,7 +25,6 @@
 #define ALICEVISION_SOFTWARE_VERSION_MINOR 0
 
 using namespace svg;
-using namespace std;
 using namespace aliceVision;
 using namespace aliceVision::image;
 
@@ -36,7 +35,7 @@ int main(int argc, char **argv)
   std::string jpgFilenameL;
   std::string jpgFilenameR;
   std::string describerTypesName = feature::EImageDescriberType_enumToString(feature::EImageDescriberType::SIFT);
-  std::string describerPreset = "NORMAL";
+  feature::ConfigurationPreset featDescPreset;
 
   po::options_description allParams("AliceVision Sample describeAndMatch");
   allParams.add_options()
@@ -46,7 +45,7 @@ int main(int argc, char **argv)
       "Right image.")
     ("describerTypes,d", po::value<std::string>(&describerTypesName)->default_value(describerTypesName),
       feature::EImageDescriberType_informations().c_str())
-    ("describerPreset,p", po::value<std::string>(&describerPreset)->default_value(describerPreset),
+    ("describerPreset,p", po::value<feature::EImageDescriberPreset>(&featDescPreset.descPreset)->default_value(featDescPreset.descPreset),
       "Control the ImageDescriber configuration (low, medium, normal, high, ultra).\n"
       "Configuration 'ultra' can take long time !");
 
@@ -76,6 +75,7 @@ int main(int argc, char **argv)
   }
 
   Image<RGBColor> image;
+  std::mt19937 randomNumberGenerator;
 
   Image<unsigned char> imageL, imageR;
   readImage(jpgFilenameL, imageL, image::EImageColorSpace::NO_CONVERSION);
@@ -96,10 +96,7 @@ int main(int argc, char **argv)
     std::cerr << "Invalid ImageDescriber type" << std::endl;
     return EXIT_FAILURE;
   }
-  if(!describerPreset.empty())
-  {
-    image_describer->setConfigurationPreset(describerPreset);
-  }
+  image_describer->setConfigurationPreset(featDescPreset);
 
   //--
   // Detect regions thanks to the image_describer
@@ -120,7 +117,7 @@ int main(int argc, char **argv)
     //- Show images side by side
     Image<unsigned char> concat;
     ConcatH(imageL, imageR, concat);
-    const string out_filename = "00_images.jpg";
+    const std::string out_filename = "00_images.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -138,7 +135,7 @@ int main(int argc, char **argv)
       const PointFeature & imaB = featsR[i];
       DrawCircle(imaB.x()+imageL.Width(), imaB.y(), 3.0f, 255, &concat);
     }
-    const string out_filename = "01_features.jpg";
+    const std::string out_filename = "01_features.jpg";
     writeImage(out_filename, concat, image::EImageColorSpace::NO_CONVERSION);
   }
 
@@ -148,6 +145,7 @@ int main(int argc, char **argv)
   //-- Perform matching -> find Nearest neighbor, filtered with Distance ratio
   matching::IndMatches vec_PutativeMatches;
   matching::DistanceRatioMatch(
+    randomNumberGenerator,
     0.8, matching::BRUTE_FORCE_L2,
     *regions_perImage[0].get(),
     *regions_perImage[1].get(),
@@ -155,7 +153,7 @@ int main(int argc, char **argv)
 
   // Draw correspondences after Nearest Neighbor ratio filter
   {
-    svgDrawer svgStream( imageL.Width() + imageR.Width(), max(imageL.Height(), imageR.Height()));
+    svgDrawer svgStream(imageL.Width() + imageR.Width(), std::max(imageL.Height(), imageR.Height()));
     svgStream.drawImage(jpgFilenameL, imageL.Width(), imageL.Height());
     svgStream.drawImage(jpgFilenameR, imageR.Width(), imageR.Height(), imageL.Width());
     for (size_t i = 0; i < vec_PutativeMatches.size(); ++i) {
@@ -166,8 +164,8 @@ int main(int argc, char **argv)
       svgStream.drawCircle(L.x(), L.y(), 3.0f, svgStyle().stroke("yellow", 2.0));
       svgStream.drawCircle(R.x()+imageL.Width(), R.y(), 3.0f,svgStyle().stroke("yellow", 2.0));
     }
-    const string out_filename = "02_Matches.svg";
-    ofstream svgFile( out_filename.c_str() );
+    const std::string out_filename = "02_Matches.svg";
+    std::ofstream svgFile(out_filename.c_str());
     svgFile << svgStream.closeSvgFile().str();
     svgFile.close();
   }

@@ -184,6 +184,7 @@ struct GeometricFilterMatrix_HGrowing : public GeometricFilterMatrix
                                        const Regions_or_Features_ProviderT &regionsPerView,
                                        const Pair &pairIndex,
                                        const matching::MatchesPerDescType &putativeMatchesPerType,
+                                       std::mt19937 &randomNumberGenerator,
                                        matching::MatchesPerDescType &out_geometricInliersPerType,
                                        const std::string& outputSvgDir = "")
   {
@@ -201,6 +202,13 @@ struct GeometricFilterMatrix_HGrowing : public GeometricFilterMatrix
         std::find(descTypes.begin(), descTypes.end(),feature::EImageDescriberType::CCTAG4) != descTypes.end())
     {
       ALICEVISION_LOG_ERROR("Geometric filtering by Homography Growing cannot handle CCTAG descriptors.");
+      return EstimationStatus(false, false);
+    }
+#endif
+#if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_APRILTAG)
+    if (std::find(descTypes.begin(), descTypes.end(),feature::EImageDescriberType::APRILTAG16H5) != descTypes.end())
+    {
+      ALICEVISION_LOG_ERROR("Geometric filtering by Homography Growing cannot handle AprilTag descriptors.");
       return EstimationStatus(false, false);
     }
 #endif

@@ -40,8 +40,8 @@ function(trilean_option NAME DESCRIPTION DEFAULT_VALUE)
   endif()
 endfunction()
 
-# C++11
-set(CMAKE_CXX_STANDARD 11)
+# C++14
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ==============================================================================
@@ -58,6 +58,7 @@ trilean_option(ALICEVISION_BUILD_DOC "Build AliceVision documentation" AUTO)
 
 trilean_option(ALICEVISION_USE_OPENMP "Enable OpenMP parallelization" ON)
 trilean_option(ALICEVISION_USE_CCTAG "Enable CCTAG markers" AUTO)
+trilean_option(ALICEVISION_USE_APRILTAG "Enable AprilTag markers" AUTO)
 trilean_option(ALICEVISION_USE_POPSIFT "Enable GPU SIFT implementation" AUTO)
 trilean_option(ALICEVISION_USE_OPENGV "Enable use of OpenGV algorithms" AUTO)
 trilean_option(ALICEVISION_USE_ALEMBIC "Enable Alembic I/O" AUTO)
@@ -202,18 +203,6 @@ if(CMAKE_COMPILER_IS_GNUCXX)
 endif()
 
 # ==============================================================================
-# Check C++11 support
-# ==============================================================================
-include(CXX11)
-check_for_cxx11_compiler(CXX11_COMPILER)
-
-if(NOT CXX11_COMPILER)
-  message(FATAL_ERROR "The compiler does not support the CXX11 standard.")
-endif(NOT CXX11_COMPILER)
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ==============================================================================
 # Enable code coverage generation (only with GCC)
 # ==============================================================================
 if(ALICEVISION_BUILD_COVERAGE AND CMAKE_COMPILER_IS_GNUCXX)
@@ -273,8 +262,15 @@ else()
   message(SEND_ERROR "${Boost_ERROR_REASON}")
 endif()
 
-# Disable BOOST autolink
-add_definitions(-DBOOST_ALL_NO_LIB)
+
+if(WIN32)
+  # Disable BOOST autolink
+  add_definitions(-DBOOST_ALL_NO_LIB)
+
+  #To be removed later, a bug to make things work with current vcpkg
+  #https://github.com/microsoft/vcpkg/issues/22495
+  add_definitions(-DBOOST_USE_WINAPI_VERSION=BOOST_WINAPI_VERSION_WIN7)
+endif()
 
 if(BUILD_SHARED_LIBS)
   # Force BOOST to use dynamic libraries (avoid link error with boost program_options)
@@ -293,26 +289,23 @@ endif()
 
 
 # ==============================================================================
-# OpenEXR
+# OpenEXR >= 2.5
 # ==============================================================================
-find_package(OpenEXR)
-if(TARGET OpenEXR::IlmImf)
-  message(STATUS "OpenEXR found. (Version ${OpenEXR_VERSION})")
-else()
-  # fallback for old openexr versions (<2.5)
-  set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/openexr)
-  find_package(OpenEXR REQUIRED)
-  if(OPENEXR_FOUND)
-    message(STATUS "OpenEXR found (without config). (Version ${OPENEXR_VERSION})")
+find_package(OpenEXR REQUIRED)
+if(TARGET OpenEXR::OpenEXR OR TARGET IlmBase::Half)
+  if(OpenEXR_VERSION VERSION_GREATER_EQUAL 2.5)
+    message(STATUS "OpenEXR found. (Version ${OpenEXR_VERSION})")
   else()
-    message(SEND_ERROR "Failed to find OpenEXR.")
+    message(SEND_ERROR "OpenEXR: Version found is ${OpenEXR_VERSION}, the minimal version required is 2.5.")
   endif()
+else()
+  message(SEND_ERROR "Failed to find OpenEXR.")
 endif()
 
 # ==============================================================================
 # OpenImageIO
 # ==============================================================================
-find_package(OpenImageIO 1.8 REQUIRED)
+find_package(OpenImageIO 2.0.9 REQUIRED)
 if(OPENIMAGEIO_FOUND OR OpenImageIO_FOUND)
   message(STATUS "OpenImageIO found.")
   if(UNIX)
@@ -504,6 +497,15 @@ if(ALICEVISION_BUILD_SFM)
   endif()
 endif()
 
+
+# ==============================================================================
+# Assimp
+# ==============================================================================
+if(ALICEVISION_BUILD_MVS)
+  find_package(assimp REQUIRED)
+  message(STATUS "Assimp: ${ASSIMP_LIBRARIES}, ${ASSIMP_INCLUDE_DIRS}, ${ASSIMP_LIBRARY_DIRS}")
+endif()
+
 # ==============================================================================
 # OpenCV
 # ==============================================================================
@@ -514,15 +516,15 @@ set(ALICEVISION_HAVE_OCVSIFT 0)
 
 if(ALICEVISION_BUILD_SFM)
   if(NOT ALICEVISION_USE_OPENCV STREQUAL "OFF")
-    find_package(OpenCV COMPONENTS core imgproc video imgcodecs videoio features2d xfeatures2d)
+    find_package(OpenCV COMPONENTS core imgproc video imgcodecs videoio features2d)
 
     if(OpenCV_FOUND)
       # We do not set the minimal version directly in find_package
       # due to this issue in opencv: https://github.com/opencv/opencv/issues/5931
       # which considers major version as exact requirement.
-      if(OpenCV_VERSION VERSION_LESS "3.2.0")
+      if(OpenCV_VERSION VERSION_LESS "3.4.11")
         if(ALICEVISION_USE_OPENCV STREQUAL "ON")
-          message(SEND_ERROR "Failed to find OpenCV 3.2.0+")
+          message(SEND_ERROR "Failed to find OpenCV 3.4.11+")
         endif()
       else()
         set(ALICEVISION_HAVE_OPENCV 1)
@@ -568,50 +570,6 @@ if(ALICEVISION_BUILD_SFM) # or ALICEVISION_BUILD_MVS
 endif()
 
 # ==============================================================================
-# CCTag
-# ==============================================================================
-# - optional, only external and enabled only if ALICEVISION_USE_CCTAG is ON
-# ==============================================================================
-set(ALICEVISION_HAVE_CCTAG 0)
-
-if(ALICEVISION_BUILD_SFM)
-  if(NOT ALICEVISION_USE_CCTAG STREQUAL "OFF")
-    if(ALICEVISION_HAVE_OPENCV)
-      find_package(CCTag 1.0.0 CONFIG)
-
-      if(CCTag_FOUND)
-        set(ALICEVISION_HAVE_CCTAG 1)
-        message(STATUS "CCTAG ${CCTag_VERSION} found.")
-      elseif(ALICEVISION_USE_CCTAG STREQUAL "ON")
-        message(SEND_ERROR "Failed to find CCTAG.")
-      endif()
-    elseif(ALICEVISION_USE_CCTAG STREQUAL "ON")
-      message(SEND_ERROR "Can't use CCTAG without OPENCV.")
-    endif()
-  endif()
-endif()
-
-# ==============================================================================
-# PopSift
-# ==============================================================================
-# - optional, only external and enabled only if ALICEVISION_USE_POPSIFT is ON
-# ==============================================================================
-set(ALICEVISION_HAVE_POPSIFT 0)
-
-if(ALICEVISION_BUILD_SFM)
-  if(NOT ALICEVISION_USE_POPSIFT STREQUAL "OFF")
-    find_package(PopSift CONFIG)
-
-    if(PopSift_FOUND)
-      set(ALICEVISION_HAVE_POPSIFT 1)
-      message(STATUS "PopSIFT found.")
-    elseif(ALICEVISION_USE_POPSIFT STREQUAL "ON")
-      message(SEND_ERROR "Failed to find PopSIFT.")
-    endif()
-  endif()
-endif()
-
-# ==============================================================================
 # OpenGV
 # ==============================================================================
 # - optional, it allows to use the generic camera PnP algorithms for rig localization
@@ -620,20 +578,15 @@ set(ALICEVISION_HAVE_OPENGV 0)
 
 if(ALICEVISION_BUILD_SFM)
   if(NOT ALICEVISION_USE_OPENGV STREQUAL "OFF")
-    find_package(OpenGV)
-
-    if(OPENGV_FOUND)
+    find_package(opengv 1.0 CONFIG)
+    if(opengv_FOUND)
       set(ALICEVISION_HAVE_OPENGV 1)
-      message(STATUS "OpenGV found.")
+      message(STATUS "OpenGV ${opengv_VERSION} found.")
     elseif(ALICEVISION_USE_OPENGV STREQUAL "ON")
       message(SEND_ERROR "Failed to find OpenGV.")
     endif()
   endif()
 
-  if(ALICEVISION_HAVE_OPENGV)
-    include_directories(${OPENGV_INCLUDE_DIR})
-    link_directories(${OPENGV_LIBRARY_DIR})
-  endif()
 endif()
 
 # ==============================================================================
@@ -757,7 +710,9 @@ if(ALICEVISION_HAVE_CUDA)
 
   set(CUDA_NVCC_FLAGS_DEBUG   "${CUDA_NVCC_FLAGS_DEBUG};-G;-g")
   # set(CUDA_NVCC_FLAGS_RELEASE "${CUDA_NVCC_FLAGS_RELEASE};-O3")
-  if(CUDA_VERSION_MAJOR GREATER_EQUAL 11)
+  if(CUDA_VERSION VERSION_GREATER_EQUAL 11.1)
+    set(ALICEVISION_CUDA_CC_LIST_BASIC 35 50 52 60 61 62 70 72 75 80 86)
+  elseif(CUDA_VERSION_MAJOR GREATER_EQUAL 11)
     set(ALICEVISION_CUDA_CC_LIST_BASIC 35 50 52 60 61 62 70 72 75 80)
   elseif(CUDA_VERSION_MAJOR GREATER_EQUAL 10)
     set(ALICEVISION_CUDA_CC_LIST_BASIC 30 35 50 52 60 61 62 70 72 75)
@@ -817,6 +772,71 @@ if(ALICEVISION_HAVE_CUDA)
     add_definitions(-DALICEVISION_USE_NVTX)
     include_directories(${CUDA_INCLUDE_DIRS})
     set(ALICEVISION_NVTX_LIBRARY ${CUDA_NVTX_LIBRARY})
+  endif()
+endif()
+
+
+# ==============================================================================
+# CCTag
+# ==============================================================================
+# - optional, only external and enabled only if ALICEVISION_USE_CCTAG is ON
+# ==============================================================================
+set(ALICEVISION_HAVE_CCTAG 0)
+
+if(ALICEVISION_BUILD_SFM)
+  if(NOT ALICEVISION_USE_CCTAG STREQUAL "OFF")
+    if(ALICEVISION_HAVE_OPENCV)
+      find_package(CCTag 1.0.0 CONFIG)
+
+      if(CCTag_FOUND)
+        set(ALICEVISION_HAVE_CCTAG 1)
+        message(STATUS "CCTAG ${CCTag_VERSION} found.")
+      elseif(ALICEVISION_USE_CCTAG STREQUAL "ON")
+        message(SEND_ERROR "Failed to find CCTAG.")
+      endif()
+    elseif(ALICEVISION_USE_CCTAG STREQUAL "ON")
+      message(SEND_ERROR "Can't use CCTAG without OPENCV.")
+    endif()
+  endif()
+endif()
+
+# ==============================================================================
+# AprilTag
+# ==============================================================================
+# - optional, only external and enabled only if ALICEVISION_USE_APRILTAG is ON
+# ==============================================================================
+set(ALICEVISION_HAVE_APRILTAG 0)
+
+if(ALICEVISION_BUILD_SFM)
+  if(NOT ALICEVISION_USE_APRILTAG STREQUAL "OFF")
+    find_package(apriltag CONFIG)
+
+    if(apriltag_FOUND)
+      set(ALICEVISION_HAVE_APRILTAG 1)
+      message(STATUS "AprilTag found.")
+    elseif(ALICEVISION_USE_APRILTAG STREQUAL "ON")
+      message(SEND_ERROR "Failed to find AprilTag.")
+    endif()
+  endif()
+endif()
+
+# ==============================================================================
+# PopSift
+# ==============================================================================
+# - optional, only external and enabled only if ALICEVISION_USE_POPSIFT is ON
+# ==============================================================================
+set(ALICEVISION_HAVE_POPSIFT 0)
+
+if(ALICEVISION_BUILD_SFM)
+  if(NOT ALICEVISION_USE_POPSIFT STREQUAL "OFF")
+    find_package(PopSift CONFIG)
+
+    if(PopSift_FOUND)
+      set(ALICEVISION_HAVE_POPSIFT 1)
+      message(STATUS "PopSIFT found.")
+    elseif(ALICEVISION_USE_POPSIFT STREQUAL "ON")
+      message(SEND_ERROR "Failed to find PopSIFT.")
+    endif()
   endif()
 endif()
 
@@ -948,6 +968,7 @@ message("** Use CUDA: " ${ALICEVISION_HAVE_CUDA})
 message("** Use OpenCV SIFT features: " ${ALICEVISION_HAVE_OCVSIFT})
 message("** Use PopSift feature extractor: " ${ALICEVISION_HAVE_POPSIFT})
 message("** Use CCTAG markers: " ${ALICEVISION_HAVE_CCTAG})
+message("** Use AprilTag markers: " ${ALICEVISION_HAVE_APRILTAG})
 message("** Use OpenGV for rig localization: " ${ALICEVISION_HAVE_OPENGV})
 message("\n")
 

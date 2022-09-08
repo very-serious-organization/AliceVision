@@ -67,7 +67,7 @@ double computeCameraScore(const SfMData& sfmData, const track::TracksPerView& tr
 
     if(itObs != landmark.observations.end())
     {
-      const Vec2 residual = intrinsic->residual(pose, landmark.X, itObs->second.x);
+      const Vec2 residual = intrinsic->residual(pose, landmark.X.homogeneous(), itObs->second.x);
       score += std::min(1.0 / residual.norm(), 4.0);
     }
   }
@@ -145,10 +145,10 @@ void RigSequence::computeScores()
       const IndexT frameId = frameInfoPair.first;
       const RigFrame& rigFrame = frameInfoPair.second;
 
-      const auto curentSubPoseIt = rigFrame.find(subPoseId);
+      const auto currentSubPoseIt = rigFrame.find(subPoseId);
 
       // skip current sub-pose
-      if(curentSubPoseIt == rigFrame.end())
+      if(currentSubPoseIt == rigFrame.end())
         continue;
 
       // compute frame score
@@ -161,7 +161,7 @@ void RigSequence::computeScores()
 
         // score relative to other localized cameras of the rig
         if(otherPoseIt.first != subPoseId && otherPoseIt.second.score != 0.0)
-          frameScore += curentSubPoseIt->second.score * otherPoseIt.second.score;
+          frameScore += currentSubPoseIt->second.score * otherPoseIt.second.score;
       }
 
       // keep best frame score
@@ -186,7 +186,7 @@ void RigSequence::setupRelativePoses()
   {
     for(const auto& subPoseInfoPair : _rigInfoPerSubPose)
     {
-      if(subPoseInfoPair.second.nbPose > 20 &&
+      if(subPoseInfoPair.second.nbPose > _params.minNbCamerasForCalibration &&
          !subPoseInfoPair.second.isInitialized)
         subPosesToInitialized.emplace_back(subPoseInfoPair.first);
     }

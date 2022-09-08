@@ -78,6 +78,7 @@ void matchViewsByMetadataMatching(
  *
  * @param[in] sfmDataA
  * @param[in] sfmDataB
+ * @param[in] randomNumberGenerator random number generator
  * @param[out] out_S output scale factor
  * @param[out] out_R output rotation 3x3 matrix
  * @param[out] out_t output translation vector
@@ -85,6 +86,7 @@ void matchViewsByMetadataMatching(
  */
 bool computeSimilarityFromCommonCameras_viewId(const sfmData::SfMData& sfmDataA,
                        const sfmData::SfMData& sfmDataB,
+                      std::mt19937 & randomNumberGenerator,
                        double* out_S,
                        Mat3* out_R,
                        Vec3* out_t);
@@ -94,6 +96,7 @@ bool computeSimilarityFromCommonCameras_viewId(const sfmData::SfMData& sfmDataA,
 *
 * @param[in] sfmDataA
 * @param[in] sfmDataB
+* @param[in] randomNumberGenerator random number generator
 * @param[out] out_S output scale factor
 * @param[out] out_R output rotation 3x3 matrix
 * @param[out] out_t output translation vector
@@ -102,6 +105,7 @@ bool computeSimilarityFromCommonCameras_viewId(const sfmData::SfMData& sfmDataA,
 bool computeSimilarityFromCommonCameras_poseId(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
+    std::mt19937 & randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t);
@@ -110,6 +114,7 @@ bool computeSimilarityFromCommonCameras_imageFileMatching(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
     const std::string& filePatternMatching,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t);
@@ -118,6 +123,7 @@ bool computeSimilarityFromCommonCameras_metadataMatching(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
     const std::vector<std::string>& metadataList,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t);
@@ -126,6 +132,7 @@ bool computeSimilarityFromCommonCameras_metadataMatching(
 bool computeSimilarityFromCommonMarkers(
     const sfmData::SfMData& sfmDataA,
     const sfmData::SfMData& sfmDataB,
+    std::mt19937 &randomNumberGenerator,
     double* out_S,
     Mat3* out_R,
     Vec3* out_t);
@@ -146,17 +153,20 @@ inline void applyTransform(sfmData::SfMData& sfmData,
                            const Vec3& t,
                            bool transformControlPoints = false)
 {
-  for(auto& viewPair: sfmData.views)
+  for(auto& poseIt: sfmData.getPoses())
   {
-    const sfmData::View& view = *viewPair.second;
-    if(sfmData.existsPose(view))
-    {
-      geometry::Pose3 pose = sfmData.getPose(view).getTransform();
-      pose = pose.transformSRt(S, R, t);
-      sfmData.setPose(view, sfmData::CameraPose(pose));
-    }
+    geometry::Pose3 pose = poseIt.second.getTransform();
+    pose = pose.transformSRt(S, R, t);
+    poseIt.second.setTransform(pose);
   }
-  
+  for (auto& rigIt : sfmData.getRigs())
+  {
+      for (auto& subPose : rigIt.second.getSubPoses())
+      {
+          subPose.pose.center() *= S;
+      }
+  }
+
   for(auto& landmark: sfmData.structure)
   {
     landmark.second.X = S * R * landmark.second.X + t;
@@ -209,18 +219,45 @@ void computeNewCoordinateSystemFromLandmarks(const sfmData::SfMData& sfmData,
                                              Vec3& out_t);
 
 /**
+ * @brief Compute a new coordinate system using the GPS data available in the metadata. The transformation will bring the
+ * model in the cartesian metric reference system.
+ * @param[in] sfmData The sfmdata containing the scene.
+ * @param[in,out] randomNumberGenerator The random number generator.
+ * @param[out] out_S the scale factor.
+ * @param[out] out_R the rotation.
+ * @param[out] out_t the translation.
+ * @return false if no reliable transformation can be computed or the sfmdata does not contain gps metadata, true otherwise.
+ */
+bool computeNewCoordinateSystemFromGpsData(const sfmData::SfMData& sfmData, std::mt19937 &randomNumberGenerator,
+                                             double& out_S,
+                                             Mat3& out_R,
+                                             Vec3& out_t);
+
+/**
+ * @brief Retrieve the View Id from a string expression (integer with the view id or filename of the input image).
+ * @param[in] sfmData: sfm scene
+ * @param[in] camName: cameraName name of the reference picture (e.g. "cam_1.png")
+ */
+IndexT getViewIdFromExpression(const sfmData::SfMData& sfmData, const std::string& camName);
+
+/**
+ * @brief Retrieve the id of the camera in the center of the reconstructed cameras.
+ */
+IndexT getCenterCameraView(const sfmData::SfMData& sfmData);
+
+/**
  * @brief Compute the new coordinate system in the given reconstruction so that the given camera is the
  * origin of the world coordinate system. If this camera (view) does not exist, the transformation
  * remains unchanged.
  *
  * @param[in] sfmData
- * @param[in] cameraName name of the reference picture (e.g. "cam_1.png")
+ * @param[in] viewId
  * @param[out] out_S scale
  * @param[out] out_R rotation
  * @param[out] out_t translation
  */
 void computeNewCoordinateSystemFromSingleCamera(const sfmData::SfMData& sfmData,
-                                                const std::string& cameraName,
+                                                const IndexT viewId,
                                                 double& out_S,
                                                 Mat3& out_R,
                                                 Vec3& out_t);

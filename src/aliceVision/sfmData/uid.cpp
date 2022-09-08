@@ -9,7 +9,9 @@
 
 #include <aliceVision/sfmData/View.hpp>
 
+#include <boost/algorithm/string/case_conv.hpp> 
 #include <boost/filesystem.hpp>
+
 
 namespace fs = boost::filesystem;
 
@@ -19,6 +21,13 @@ namespace sfmData {
 std::size_t computeViewUID(const View& view)
 {
   std::size_t uid = 0;
+  const fs::path imagePath = view.getImagePath();
+
+  {
+      std::string ext = imagePath.extension().string();
+      boost::to_lower(ext);
+      stl::hash_combine(uid, ext);
+  }
 
   const std::string& bodySerialNumber = view.getMetadataBodySerialNumber();
   const std::string& lensSerialNumber = view.getMetadataLensSerialNumber();
@@ -30,9 +39,11 @@ std::size_t computeViewUID(const View& view)
   }
   else
   {
-    // no metadata to identify the image, fallback to the filename
-    const fs::path imagePath = view.getImagePath();
-    stl::hash_combine(uid, imagePath.filename().string());
+    // No uid in the metadata to identify the image, fallback to the filename.
+    // File extension is already used in the uid, so add the stem.
+    std::string stem = imagePath.stem().string();
+    boost::to_lower(stem);
+    stl::hash_combine(uid, stem);
   }
 
   if(!bodySerialNumber.empty() || !lensSerialNumber.empty())
@@ -42,28 +53,43 @@ std::size_t computeViewUID(const View& view)
   }
   else if(!hasImageUniqueID)
   {
-    // no metadata to identify the device, fallback to the folder path of the file
-    const fs::path imagePath = view.getImagePath();
+    // No metadata to identify the device, fallback to the folder path of the file.
+    // The image will NOT be relocatable in this particular case.
     stl::hash_combine(uid, imagePath.parent_path().generic_string());
   }
 
+  bool hasTimeOrCounterMetadata = false;
   if(view.hasMetadataDateTimeOriginal())
   {
     stl::hash_combine(uid, view.getMetadataDateTimeOriginal());
     stl::hash_combine(uid, view.getMetadata({"Exif:SubsecTimeOriginal", "SubsecTimeOriginal"}));
+    hasTimeOrCounterMetadata = true;
   }
-  else if(view.hasMetadata({"imageCounter"}))
+
+  if(view.hasMetadata({"imageCounter"}))
   {
     // if the view is from a video camera
     stl::hash_combine(uid, view.getMetadata({"imageCounter"}));
+    hasTimeOrCounterMetadata = true;
   }
-  else
+
+  if(hasTimeOrCounterMetadata)
+  {
+    // already added to the uid
+  }
+  else if(view.hasMetadata({"DateTime"}))
   {
     // if no original date/time, fallback to the file date/time
     stl::hash_combine(uid, view.getMetadata({"DateTime"}));
   }
+  else
+  {
+    // if no original date/time, fallback to the file date/time
+    std::time_t t = fs::last_write_time(imagePath);
+    stl::hash_combine(uid, t);
+  }
 
-  // can't use view.getWidth() and view.getHeight() directly
+  // cannot use view.getWidth() and view.getHeight() directly
   // because ground truth tests and previous version datasets
   // view UID use EXIF width and height (or 0)
 

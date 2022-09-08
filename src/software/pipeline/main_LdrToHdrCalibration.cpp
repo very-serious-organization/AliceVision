@@ -32,6 +32,8 @@
 
 #include <sstream>
 
+#include <fstream>
+
 
 // These constants define the current software version.
 // They must be updated when the command line is changed.
@@ -145,8 +147,8 @@ int aliceVision_main(int argc, char** argv)
         ("channelQuantizationPower", po::value<int>(&channelQuantizationPower)->default_value(channelQuantizationPower),
          "Quantization level like 8 bits or 10 bits.")
         ("maxTotalPoints", po::value<size_t>(&maxTotalPoints)->default_value(maxTotalPoints),
-         "Max number of points selected by the sampling strategy. This ensures that this sampling step will extract a number of pixels values "
-         "that the calibration step can manage (in term of computation time and memory usage).")
+         "Max number of points used from the sampling. This ensures that the number of pixels values extracted by the sampling "
+         "can be managed by the calibration step (in term of computation time and memory usage).")
         ;
 
     po::options_description logParams("Log parameters");
@@ -346,19 +348,22 @@ int aliceVision_main(int argc, char** argv)
     hdr::rgbCurve response(channelQuantization);
 
     // Build camera exposure table
-    std::vector<std::vector<float>> groupedExposures;
+    std::vector<std::vector<double>> groupedExposures;
     for(int i = 0; i < groupedViews.size(); ++i)
     {
         const std::vector<std::shared_ptr<sfmData::View>>& group = groupedViews[i];
-        std::vector<float> exposures;
+        std::vector<sfmData::ExposureSetting> exposuresSetting;
 
         for(int j = 0; j < group.size(); ++j)
-        {   
-            
-            float etime = group[j]->getCameraExposureSetting(/*group[0]->getMetadataISO(), group[0]->getMetadataFNumber()*/);
-            exposures.push_back(etime);
+        {
+            const sfmData::ExposureSetting exp = group[j]->getCameraExposureSetting(/*group[0]->getMetadataISO(), group[0]->getMetadataFNumber()*/);
+            exposuresSetting.push_back(exp);
         }
-        groupedExposures.push_back(exposures);
+        if(!sfmData::hasComparableExposures(exposuresSetting))
+        {
+            ALICEVISION_THROW_ERROR("Camera exposure settings are inconsistent.");
+        }
+        groupedExposures.push_back(getExposures(exposuresSetting));
     }
 
     switch(calibrationMethod)
