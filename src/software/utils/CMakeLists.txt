@@ -228,7 +228,6 @@ alicevision_add_software(aliceVision_keyframeSelection
         Boost::filesystem
 )
 
-
 # Print distances between 3D objects
 alicevision_add_software(aliceVision_sfmDistances
   SOURCE main_sfmDistances.cpp
