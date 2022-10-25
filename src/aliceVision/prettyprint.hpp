@@ -54,7 +54,7 @@ namespace pretty_print
             // typename
             template <typename C, typename LEFT = C::const_iterator(C::*)() const>
             static yes & f(typename std::enable_if<
-                std::is_same<decltype(static_cast<typename LEFT>(&C::begin)),
+                std::is_same<decltype(static_cast<LEFT>(&C::begin)),
                              typename C::const_iterator(C::*)() const>::value>::type *);
 #else // _MSCV_VER
             template <typename C>
@@ -68,7 +68,7 @@ namespace pretty_print
 #ifdef _MSC_VER
             template <typename C, typename LEFT = C::const_iterator(C::*)() const>
             static yes & g(typename std::enable_if<
-                 std::is_same<decltype(static_cast<typename LEFT>(&C::end)),
+                 std::is_same<decltype(static_cast<LEFT>(&C::end)),
                               typename C::const_iterator(C::*)() const>::value, void>::type*);
 #else // _MSCV_VER
             template <typename C>
