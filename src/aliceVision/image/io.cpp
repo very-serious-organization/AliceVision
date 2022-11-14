@@ -281,7 +281,10 @@ oiio::ParamValueList readImageMetadata(const std::string& path, int& width, int&
 
 oiio::ImageSpec readImageSpec(const std::string& path)
 {
-  std::unique_ptr<oiio::ImageInput> in(oiio::ImageInput::open(path));
+  oiio::ImageSpec configSpec;
+  configSpec.attribute("raw:user_flip", 1); // set flip to 1 to disable auto rotation of buffer
+
+  std::unique_ptr<oiio::ImageInput> in(oiio::ImageInput::open(path, &configSpec));
   oiio::ImageSpec spec = in->spec();
 
   if(!in)
@@ -372,6 +375,7 @@ void readImage(const std::string& path,
   // use_camera_matrix: Whether to use the embedded color profile, if it is present: 0=never, 1 (default)=only for DNG files, 3=always
   configSpec.attribute("raw:use_camera_matrix", 3); // use embeded color profile
   configSpec.attribute("raw:ColorSpace", "Linear"); // use linear colorspace with sRGB primaries
+  configSpec.attribute("raw:user_flip", 1); // set flip to 1 to disable auto rotation of buffer
 
   oiio::ImageBuf inBuf(path, 0, 0, NULL, &configSpec);
 
