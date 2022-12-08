@@ -166,6 +166,10 @@ public:
     return (_localGraph != nullptr);
   }
 
+  HashMap<IndexT, Eigen::Matrix<double, 6, 6>> getCovariances() {
+      return _cameraJacobians;
+  }
+
 private:
 
   /**
@@ -301,6 +305,9 @@ private:
   /// hinted order for ceres to eliminate blocks when solving.
   /// note: this ceres parameter is built internally and must be reset on each call to the solver.
   ceres::ParameterBlockOrdering _linearSolverOrdering;
+
+  HashMap<IndexT, Eigen::Matrix<double, 6, 6>> _cameraJacobians;
+
 
 };
 

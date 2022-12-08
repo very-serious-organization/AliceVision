@@ -187,6 +187,61 @@ class IntrinsicsManifoldSymbolic : public utils::CeresManifold {
   bool _lockDistortion;
 };
 
+class MeanPointsCostFunction : public ceres::CostFunction {
+public:
+    MeanPointsCostFunction(size_t count, const Vec3 & sum) : _count(count), _sum(sum)
+    {
+        set_num_residuals(3);
+
+        for (int id = 0; id < count; id++)
+        {
+            mutable_parameter_block_sizes()->push_back(3);
+        }
+    }
+
+    bool Evaluate(double const* const* parameters, double* residuals, double** jacobians) const override
+    {
+        Vec3 est;
+        est.fill(0);
+
+        for (int id = 0; id < _count; id++)
+        {
+            const double* parameter_point = parameters[id];
+            Vec3 pt;
+            pt.x() = parameter_point[0];
+            pt.y() = parameter_point[1];
+            pt.z() = parameter_point[2];
+
+            est += pt;
+        }
+
+        residuals[0] = est.x() - _sum.x();
+        residuals[1] = est.y() - _sum.y();
+        residuals[2] = est.z() - _sum.z();
+
+        if (jacobians == nullptr) {
+            return true;
+        }
+
+        for (int id = 0; id < _count; id++)
+        {
+            double* jacobian = jacobians[id];
+            if (jacobian == nullptr)
+            {
+                continue;
+            }
+
+            Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> J(jacobians[id]);
+            J.setIdentity();
+        }
+
+        return true;
+    }
+
+private:
+    size_t _count;
+    Vec3 _sum;
+};
 
 class CostProjection : public ceres::CostFunction {
 public:
@@ -288,6 +343,7 @@ void BundleAdjustmentSymbolicCeres::addPose(const sfmData::CameraPose& cameraPos
   // keep the camera extrinsics constants
   if(cameraPose.isLocked() || isConstant || (!refineTranslation && !refineRotation))
   {
+    
     // set the whole parameter block as constant.
     _statistics.addState(EParameter::POSE, EParameterState::CONSTANT);
 
@@ -897,6 +953,8 @@ bool BundleAdjustmentSymbolicCeres::adjust(sfmData::SfMData& sfmData, ERefineOpt
   ceres::Problem problem(problemOptions);
   createProblem(sfmData, refineOptions, problem);
 
+  
+
   // configure a Bundle Adjustment engine and run it
   // make Ceres automatically detect the bundle structure.
   ceres::Solver::Options options;
@@ -907,7 +965,6 @@ bool BundleAdjustmentSymbolicCeres::adjust(sfmData::SfMData& sfmData, ERefineOpt
   ceres::Solve(options, &problem, &summary);
 
   // print summary
-  std::cout << "symbolic" << std::endl;
   if(_ceresOptions.summary) {
     ALICEVISION_LOG_INFO(summary.FullReport());
   }
@@ -936,6 +993,58 @@ bool BundleAdjustmentSymbolicCeres::adjust(sfmData::SfMData& sfmData, ERefineOpt
     _statistics.nbCamerasPerDistance = _localGraph->getDistancesHistogram();
   }
 
+  if (_statistics.RMSEfinal < 1.0) return true;
+
+  
+  Vec3 sum;
+  size_t count = 0;
+  std::vector<double*> landmarksPtrs;
+  for (auto& landmarksBlockPair : _landmarksBlocks)
+  {
+      const IndexT landmarkId = landmarksBlockPair.first;
+      sfmData::Landmark& landmark = sfmData.getLandmarks().at(landmarkId);
+
+      if (getLandmarkState(landmarkId) != EParameterState::REFINED) {
+          continue;
+      }
+
+      sum += landmark.X;
+      count++;
+
+      landmarksPtrs.push_back(landmarksBlockPair.second.data());
+
+      if (count > 50) break;
+  }
+
+  problem.AddResidualBlock(new MeanPointsCostFunction(landmarksPtrs.size(), sum), nullptr, landmarksPtrs);
+  
+
+  ceres::Covariance::Options covoptions;
+  ceres::Covariance cov(covoptions);
+
+  std::vector<std::pair<const double*, const double*>> blocks;
+  for (auto & it : _posesBlocks)
+  {
+      blocks.push_back(std::make_pair(it.second.data(), it.second.data()));
+  }
+  
+  if (!cov.Compute(blocks, &problem))
+  {
+      std::cout << "rate" << std::endl;
+      return false;
+  }
+
+  for (auto& it : _posesBlocks)
+  {
+      double data[16*16];
+      if (cov.GetCovarianceBlockInTangentSpace(it.second.data(), it.second.data(), data))
+      {
+          Eigen::Map<Eigen::Matrix<double, 6, 6>> J(data);
+          std::cout << J << std::endl;
+      }
+  }
+
+  
   return true;
 }
 

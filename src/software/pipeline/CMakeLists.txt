@@ -116,6 +116,20 @@ if(ALICEVISION_BUILD_SFM)
           Boost::filesystem
   )
 
+  # Graph builder
+  alicevision_add_software(aliceVision_graphBuilder
+    SOURCE main_graphBuilder.cpp
+    FOLDER ${FOLDER_SOFTWARE_PIPELINE}
+    LINKS aliceVision_system
+          aliceVision_image
+          aliceVision_feature
+          aliceVision_sfm
+          aliceVision_sfmData
+          aliceVision_sfmDataIO
+          Boost::program_options
+          Boost::filesystem
+  )
+
   # Global SfM
   alicevision_add_software(aliceVision_globalSfM
     SOURCE main_globalSfM.cpp

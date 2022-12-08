@@ -694,6 +694,7 @@ bool ReconstructionEngine_sequentialSfM::bundleAdjustment(std::set<IndexT>& newR
   auto chronoStart = std::chrono::steady_clock::now();
 
   BundleAdjustmentCeres::CeresOptions options;
+  options.summary = true;
   BundleAdjustment::ERefineOptions refineOptions = BundleAdjustment::REFINE_ROTATION | BundleAdjustment::REFINE_TRANSLATION | BundleAdjustment::REFINE_STRUCTURE;
 
   if(!isInitialPair && !_params.lockAllIntrinsics)
