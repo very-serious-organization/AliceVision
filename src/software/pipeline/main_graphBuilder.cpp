@@ -126,11 +126,76 @@ Eigen::Matrix<double, 6, 6> getAdjoint(const Eigen::Matrix4d & SE3)
     const auto & t = SE3.block<3, 1>(0, 3);
 
     ret.block<3, 3>(0, 0) = R;
-    ret.block<3, 3>(0, 3) = SO3::skew(t) * R;
+    ret.block<3, 3>(3, 0) = SO3::skew(t) * R;
     ret.block<3, 3>(3, 3) = R;
 
     return ret;
 }
+
+/*
+void test()
+{
+    sfmData::SfMData testScene;
+
+    std::shared_ptr<sfmData::View> v1 = std::make_shared<sfmData::View>("toto", 1, 1, 1, 1920, 1080);
+    std::shared_ptr<sfmData::View> v2 = std::make_shared<sfmData::View>("tata", 2, 1, 2, 1920, 1080);
+
+    testScene.getViews()[1] = v1;
+    testScene.getViews()[2] = v2;
+
+    testScene.setAbsolutePose(1, sfmData::CameraPose(geometry::Pose3(), true));
+    testScene.setAbsolutePose(2, sfmData::CameraPose(geometry::Pose3(Eigen::Matrix3d::Identity(), {1, 1, 1}), false));
+
+    auto ptrIntrinsic = camera::createIntrinsic(camera::PINHOLE_CAMERA, 1920, 1080, 2000, 2000, 0, 0);
+    testScene.getIntrinsics()[1] = ptrIntrinsic;
+
+    std::vector<Vec3> pts;
+    pts.push_back({ 0.01, -1, 2 });
+    pts.push_back({ 0, -0.9, 2 });
+    pts.push_back({ -0.01, -0.8, 2 });
+    pts.push_back({ 0.02, 0.8, 2 });
+    pts.push_back({ 0.05, 0.9, 2 });
+    pts.push_back({ 0.002, 1.0, 2 });
+
+    int pos = 0;
+    for (auto & pt : pts)
+    {
+        double y = pt.y();
+        pt.y() = pt.x();
+        pt.x() = y;
+
+        sfmData::Landmark l;
+        l.descType = feature::EImageDescriberType::SIFT;
+        l.X = pt;
+
+        sfmData::Observation obs1;
+        obs1.scale = 1.0;
+        obs1.x = ptrIntrinsic->project(testScene.getPose(*v1).getTransform(), pt.homogeneous(), true);
+
+        sfmData::Observation obs2;
+        obs2.scale = 1.0;
+        obs2.x = ptrIntrinsic->project(testScene.getPose(*v2).getTransform(), pt.homogeneous(), true) + Vec2::Random();
+
+        l.observations[1] = obs1;
+        l.observations[2] = obs1;
+
+        testScene.getLandmarks()[pos] = l;
+        pos++;
+    }
+
+    sfm::BundleAdjustmentCeres::CeresOptions options(false, false);
+    options.linearSolverType = ceres::DENSE_SCHUR;
+    options.summary = true;
+    sfm::BundleAdjustmentCeres bundle(options);
+    bool resultBundle = bundle.adjust(testScene, sfm::BundleAdjustment::REFINE_ROTATION | sfm::BundleAdjustment::REFINE_TRANSLATION | sfm::BundleAdjustment::REFINE_STRUCTURE);
+    if (!resultBundle)
+    {
+        return;
+    }
+
+    std::cout << bundle.getCovariances()[v1->getPoseId()] << std::endl;
+    std::cout << bundle.getCovariances()[v2->getPoseId()] << std::endl;
+}*/
 
 int aliceVision_main(int argc, char** argv)
 {
@@ -177,6 +242,7 @@ int aliceVision_main(int argc, char** argv)
 
     std::mt19937 randomNumberGenerator;
     randomNumberGenerator.seed(randomSeed);
+
 
     // load input SfMData scene
     sfmData::SfMData sfmData;
@@ -313,7 +379,7 @@ int aliceVision_main(int argc, char** argv)
         Vec3 t;
     };
     
-    for (auto ls : links)
+    /*for (auto ls : links)
     {
         IndexT ref = ls.first.second;
 
@@ -371,8 +437,7 @@ int aliceVision_main(int argc, char** argv)
             continue;
         }
 
-        edges[std::make_pair()] = edge;
-    }
+    }*/
 
 
 
