@@ -28,6 +28,12 @@
 
 #include <aliceVision/sfm/liealgebra.hpp>
 
+
+#include <boost/graph/graph_traits.hpp>
+#include <boost/graph/adjacency_list.hpp>
+#include <boost/graph/dijkstra_shortest_paths.hpp>
+#include <boost/property_map/property_map.hpp>
+
 #include <cstdlib>
 
 // These constants define the current software version.
@@ -370,7 +376,47 @@ int aliceVision_main(int argc, char** argv)
         }
     }
 
-    typedef std::pair<Pair, Pair> edges;
+
+
+    typedef boost::property<boost::vertex_name_t, IndexT> vertex_property_t;
+    typedef boost::property<boost::edge_weight_t, Eigen::Matrix<double, 6, 6>> edge_property_t;
+    typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, vertex_property_t, edge_property_t> graph_t;
+    typedef graph_t::vertex_descriptor vertex_t;
+    typedef graph_t::edge_descriptor edge_t;
+    typedef boost::graph_traits<graph_t>::edge_iterator edge_iter;
+
+    graph_t g;  
+
+    std::map<IndexT, vertex_t> nodes;
+
+    for (const auto& pv : sfmData.getViews())
+    {
+        nodes[pv.first] = boost::add_vertex(g);
+    }
+
+    
+    for (const auto& link : links)
+    {
+        const vertex_t & v1 = nodes[link.first.first];
+        const vertex_t & v2 = nodes[link.first.second];
+        boost::add_edge(v1, v2, link.second.C, g);
+    }
+
+    std::vector<Eigen::Matrix<double, 6, 6>> d(num_vertices(g));
+
+    struct matrixless
+    {
+        bool operator()(const Eigen::Matrix<double, 6, 6>& p1, const Eigen::Matrix<double, 6, 6> & p2) const
+        {
+            return p1.trace() < p2.trace();
+        }
+    };
+
+    matrixless l;
+    boost::dijkstra_shortest_paths(g, nodes.begin()->second, weight_map(boost::get(boost::edge_weight, g)).distance_map(boost::make_iterator_property_map(d.begin(), get(boost::vertex_index, g))).distance_compare(l));
+    
+
+    /*typedef std::pair<Pair, Pair> edges;
 
     struct PairEdge
     {
@@ -379,7 +425,7 @@ int aliceVision_main(int argc, char** argv)
         Vec3 t;
     };
     
-    /*for (auto ls : links)
+    for (auto ls : links)
     {
         IndexT ref = ls.first.second;
 
