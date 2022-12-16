@@ -38,6 +38,10 @@ int aliceVision_main(int argc, char** argv)
     std::vector<std::string> models;        // media model list
     std::vector<float> mmFocals;            // media focal (mm) list
 
+    bool computeRescaled = true;            // compute scores for rescaled images as well
+    bool exportSharpness = true;            // export sharpness scores to a CSV file
+    bool exportFlow = true;                 // export flow scores to a CSV file
+
     // Algorithm variables
     unsigned int minFrameStep = 12;
     unsigned int maxNbOutFrame = 0;
@@ -51,7 +55,13 @@ int aliceVision_main(int argc, char** argv)
         ("outputFolder", po::value<std::string>(&outputFolder)->required(),
             "Output keyframes folder for .jpg.")
         ("useRegularKeyframes", po::value<bool>(&useRegularKeyframes)->required(),
-            "Use regular keyframe extraction instead of the smart method.");
+            "Use regular keyframe extraction instead of the smart method.")
+        ("computeRescaled", po::value<bool>(&computeRescaled)->required(),
+            "Compute scores for rescaled images in addition to full resolution images.")
+        ("exportSharpness", po::value<bool>(&exportSharpness)->required(),
+            "Export each frame's sharpness score to a CSV file.")
+        ("exportFlow", po::value<bool>(&exportFlow)->required(),
+            "Export each frame's flow score to a CSV file.");
 
     po::options_description metadataParams("Metadata parameters");  
     metadataParams.add_options()
@@ -114,6 +124,14 @@ int aliceVision_main(int argc, char** argv)
     // Set algorithm parameters
     selector.setMinFrameStep(minFrameStep);
     selector.setMaxOutFrame(maxNbOutFrame);
+
+    bool ret = selector.computeScores(mediaPaths, computeRescaled);
+
+    if (exportSharpness && exportFlow)
+    {
+        ret = selector.exportAllScoresToFile(outputFolder);
+        return EXIT_SUCCESS;
+    }
 
     // process
     if (useRegularKeyframes)

@@ -93,7 +93,7 @@ cv::Mat readImage(dataio::FeedProvider & feed, size_t max_width)
 
     // Resize to smaller size
     cv::Mat cvRescaled;
-    if (cvGrayscale.cols > max_width)
+    if (cvGrayscale.cols > max_width && max_width > 0)
     {
         cv::resize(cvGrayscale, cvRescaled, cv::Size(max_width, double(cvGrayscale.rows) * double(max_width) / double(cvGrayscale.cols)));
     }
@@ -281,7 +281,7 @@ void KeyframeSelector::processSmart(const std::vector<std::string> & mediaPaths)
             ALICEVISION_LOG_DEBUG("media : " << mediaPaths.at(mediaIndex));
             auto& feed = *feeds.at(mediaIndex);
 
-            //Resize to smaller size
+            // Resize to smaller size
             cv::Mat cvRescaled = readImage(feed, processWidth);
 
             double score = computeSharpness(cvRescaled, 200);
@@ -421,6 +421,427 @@ bool KeyframeSelector::writeSelection(const std::string & outputFolder, const st
 
     }
 
+    return true;
+}
+
+bool KeyframeSelector::exportSharpnessToFile(const std::vector<std::string>& mediaPaths,
+                                             const std::string& folder, const std::string& filename) const
+{
+    // Create feeds and count minimum number of frames
+    std::size_t nbFrames = std::numeric_limits<std::size_t>::max();
+    std::vector<std::unique_ptr<dataio::FeedProvider>> feeds;
+
+    for (std::size_t mediaIndex = 0; mediaIndex < mediaPaths.size(); ++mediaIndex)
+    {
+        const auto& path = mediaPaths.at(mediaIndex);
+
+        // Create a feed provider per mediaPaths
+        feeds.emplace_back(new dataio::FeedProvider(path));
+        const auto& feed = *feeds.back();
+
+        // Check if feed is initialized
+        if (!feed.isInit())
+        {
+            ALICEVISION_LOG_ERROR("Cannot initialize the FeedProvider with " << path);
+            throw std::invalid_argument("Cannot while initialize the FeedProvider with " + path);
+        }
+
+        // Update minimum number of frames
+        nbFrames = std::min(nbFrames, (size_t)feed.nbFrames());
+    }
+
+    // Check if minimum number of frame is zero
+    if (nbFrames == 0)
+    {
+        ALICEVISION_LOG_ERROR("One or multiple medias can't be found or empty !");
+        throw std::invalid_argument("One or multiple medias can't be found or empty !");
+    }
+
+    // Feed provider variables
+    image::Image<image::RGBColor> image;     // original image
+    camera::PinholeRadialK3 queryIntrinsics; // image associated camera intrinsics
+    bool hasIntrinsics = false;              // true if queryIntrinsics is valid
+    std::string currentImgName;              // current image name
+
+
+    // Feed and metadata initialization
+    for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
+    {
+        // First frame with offset
+        feeds.at(mediaIndex)->goToFrame(0);
+
+        if (!feeds.at(mediaIndex)->readImage(image, queryIntrinsics, currentImgName, hasIntrinsics))
+        {
+            ALICEVISION_LOG_ERROR("Cannot read media first frame " << mediaPaths[mediaIndex]);
+            throw std::invalid_argument("Cannot read media first frame " + mediaPaths[mediaIndex]);
+        }
+    }
+
+    size_t currentFrame = 0;
+    std::vector<double> sharpnessScores;
+
+    while (currentFrame < nbFrames)
+    {
+        double minimalSharpness = std::numeric_limits<double>::max();
+
+        for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
+        {
+            ALICEVISION_LOG_DEBUG("media : " << mediaPaths.at(mediaIndex));
+            auto& feed = *feeds.at(mediaIndex);
+
+            // Read image into an OpenCV Mat
+            cv::Mat cvRescaled = readImage(feed, 0);
+
+            double score = computeSharpness(cvRescaled, 200);
+            minimalSharpness = std::min(minimalSharpness, score);
+
+            feed.goToNextFrame();
+        }
+
+        sharpnessScores.push_back(minimalSharpness);
+        currentFrame++;
+    }
+
+    // Export the score vector to a CSV file
+    std::ofstream os;
+    os.open((fs::path(folder) / filename).string(), std::ios::app);
+
+    if (!os.is_open())
+    {
+        ALICEVISION_LOG_DEBUG("Unable to open the sharpness scores file: '" << filename << "'.");
+        return false;
+    }
+
+    os.seekp(0, std::ios::end); // Put the cursor at the end
+    if (os.tellp() == std::streampos(0)) // 'tellp' returns the cursor's position
+    {
+        // If the file does not exist, add a header
+        os << "FrameNb;SharpnessScore;\n";
+    }
+
+    for (size_t s = 0; s < sharpnessScores.size(); s++)
+    {
+        os << s << ";" << sharpnessScores.at(s) << ";\n";
+    }
+    os.close();
+    return true;
+}
+
+bool KeyframeSelector::exportFlowToFile(const std::vector<std::string>& mediaPaths,
+                                        const std::string& folder, const std::string& filename) const
+{
+    // Create feeds and count minimum number of frames
+    std::size_t nbFrames = std::numeric_limits<std::size_t>::max();
+    std::vector<std::unique_ptr<dataio::FeedProvider>> feeds;
+
+    for (std::size_t mediaIndex = 0; mediaIndex < mediaPaths.size(); ++mediaIndex)
+    {
+        const auto& path = mediaPaths.at(mediaIndex);
+
+        // Create a feed provider per mediaPaths
+        feeds.emplace_back(new dataio::FeedProvider(path));
+        const auto& feed = *feeds.back();
+
+        // Check if feed is initialized
+        if (!feed.isInit())
+        {
+            ALICEVISION_LOG_ERROR("Cannot initialize the FeedProvider with " << path);
+            throw std::invalid_argument("Cannot while initialize the FeedProvider with " + path);
+        }
+
+        // Update minimum number of frames
+        nbFrames = std::min(nbFrames, (size_t)feed.nbFrames());
+    }
+
+    // Check if minimum number of frame is zero
+    if (nbFrames == 0)
+    {
+        ALICEVISION_LOG_ERROR("One or multiple medias can't be found or empty !");
+        throw std::invalid_argument("One or multiple medias can't be found or empty !");
+    }
+
+    // Feed provider variables
+    image::Image<image::RGBColor> image;     // original image
+    camera::PinholeRadialK3 queryIntrinsics; // image associated camera intrinsics
+    bool hasIntrinsics = false;              // true if queryIntrinsics is valid
+    std::string currentImgName;              // current image name
+
+
+    // Feed and metadata initialization
+    for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
+    {
+        // First frame with offset
+        feeds.at(mediaIndex)->goToFrame(0);
+
+        if (!feeds.at(mediaIndex)->readImage(image, queryIntrinsics, currentImgName, hasIntrinsics))
+        {
+            ALICEVISION_LOG_ERROR("Cannot read media first frame " << mediaPaths[mediaIndex]);
+            throw std::invalid_argument("Cannot read media first frame " + mediaPaths[mediaIndex]);
+        }
+    }
+
+    size_t currentFrame = 1;
+    std::vector<double> flowScores;
+
+    while (currentFrame < nbFrames)
+    {
+        double flow = estimateFlow(feeds, 0, 0, 1);
+        flowScores.push_back(flow);
+        currentFrame++;
+    }
+
+    // Export the score vector to a CSV file
+    std::ofstream os;
+    os.open((fs::path(folder) / filename).string(), std::ios::app);
+
+    if (!os.is_open())
+    {
+        ALICEVISION_LOG_DEBUG("Unable to open the optical flow scores file: '" << filename << "'.");
+        return false;
+    }
+
+    os.seekp(0, std::ios::end); // Put the cursor at the end
+    if (os.tellp() == std::streampos(0)) // 'tellp' returns the cursor's position
+    {
+        // If the file does not exist, add a header
+        os << "FrameNb;OpticalFlowScore;\n";
+    }
+
+    for (size_t s = 0; s < flowScores.size(); s++)
+    {
+        os << s << ";" << flowScores.at(s) << ";\n";
+    }
+    os.close();
+    return true;
+}
+
+double computeSharpness2(const cv::Mat& grayscaleImage, const int windowSize)
+{
+    cv::Mat sum, sumsq, laplacian;
+    cv::Laplacian(grayscaleImage, laplacian, CV_64F);
+    cv::integral(laplacian, sum, sumsq);
+
+    double totalCount = windowSize * windowSize;
+    double maxstd = 0.0;
+    for (int y = 0; y < sum.rows - windowSize; y += int(windowSize / 2))
+    {
+        for (int x = 0; x < sum.cols - windowSize; x += int(windowSize / 2))
+        {
+            double tl = sum.at<double>(y, x);
+            double tr = sum.at<double>(y, x + windowSize);
+            double bl = sum.at<double>(y + windowSize, x);
+            double br = sum.at<double>(y + windowSize, x + windowSize);
+            double s1 = br + tl - tr - bl;
+
+            tl = sumsq.at<double>(y, x);
+            tr = sumsq.at<double>(y, x + windowSize);
+            bl = sumsq.at<double>(y + windowSize, x);
+            br = sumsq.at<double>(y + windowSize, x + windowSize);
+            double s2 = br + tl - tr - bl;
+
+            double std_2 = std::sqrt((s2 - (s1 * s1) / totalCount) / totalCount);
+
+            maxstd = std::max(maxstd, std_2);
+        }
+    }
+
+    return maxstd;
+}
+
+double estimateFlow(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat& grayscaleImage,
+                    const Mat& previousGrayscaleImage, const int windowSize)
+{
+    double minmaxflow = std::numeric_limits<double>::max();
+    cv::Mat flow;
+    ptrFlow->calc(grayscaleImage, previousGrayscaleImage, flow);
+
+    cv::Mat sumflow;
+    cv::integral(flow, sumflow, CV_64F);
+
+    double n = windowSize * windowSize;
+    double maxflow = 0.0;
+    size_t count = 0;
+
+    cv::Mat matnorm(flow.size(), CV_32FC1);
+    for (int i = 10; i < flow.rows - windowSize - 10; i++)
+    {
+        for (int j = 10; j < flow.cols - windowSize - 10; j++)
+        {
+            cv::Point2d tl = sumflow.at<cv::Point2d>(i, j);
+            cv::Point2d tr = sumflow.at<cv::Point2d>(i, j + windowSize);
+            cv::Point2d bl = sumflow.at<cv::Point2d>(i + windowSize, j);
+            cv::Point2d br = sumflow.at<cv::Point2d>(i + windowSize, j + windowSize);
+            cv::Point2d s1 = br + tl - tr - bl;
+
+            cv::Point fl = flow.at<cv::Point2f>(i, j);
+
+            double norm = std::hypot(s1.x, s1.y) / n;
+            maxflow = std::max(maxflow, norm);
+        }
+    }
+
+    minmaxflow = std::min(minmaxflow, maxflow);
+    return minmaxflow;
+}
+
+bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, bool rescale)
+{
+    _sharpnessScores.clear();
+    _sharpnessScoresRescaled.clear();
+    _flowScores.clear();
+    _flowScoresRescaled.clear();
+
+    // Create feeds and count minimum number of frames
+    std::size_t nbFrames = std::numeric_limits<std::size_t>::max();
+    std::vector<std::unique_ptr<dataio::FeedProvider>> feeds;
+
+    for (std::size_t mediaIndex = 0; mediaIndex < mediaPaths.size(); ++mediaIndex)
+    {
+        const auto& path = mediaPaths.at(mediaIndex);
+
+        // Create a feed provider per mediaPaths
+        feeds.emplace_back(new dataio::FeedProvider(path));
+        const auto& feed = *feeds.back();
+
+        // Check if feed is initialized
+        if (!feed.isInit())
+        {
+            ALICEVISION_LOG_ERROR("Cannot initialize the FeedProvider with " << path);
+            throw std::invalid_argument("Cannot while initialize the FeedProvider with " + path);
+        }
+
+        // Update minimum number of frames
+        nbFrames = std::min(nbFrames, (size_t)feed.nbFrames());
+    }
+
+    // Check if minimum number of frame is zero
+    if (nbFrames == 0)
+    {
+        ALICEVISION_LOG_ERROR("One or multiple medias can't be found or empty !");
+        throw std::invalid_argument("One or multiple medias can't be found or empty !");
+    }
+
+    // Feed provider variables
+    image::Image<image::RGBColor> image;     // original image
+    camera::PinholeRadialK3 queryIntrinsics; // image associated camera intrinsics
+    bool hasIntrinsics = false;              // true if queryIntrinsics is valid
+    std::string currentImgName;              // current image name
+
+    // Feed and metadata initialization
+    for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
+    {
+        // First frame with offset
+        feeds.at(mediaIndex)->goToFrame(0);
+
+        if (!feeds.at(mediaIndex)->readImage(image, queryIntrinsics, currentImgName, hasIntrinsics))
+        {
+            ALICEVISION_LOG_ERROR("Cannot read media first frame " << mediaPaths[mediaIndex]);
+            throw std::invalid_argument("Cannot read media first frame " + mediaPaths[mediaIndex]);
+        }
+    }
+
+    size_t currentFrame = 0;
+    cv::Mat previous, cvMat;
+    cv::Mat previousRescaled, cvRescaled;
+    auto ptrFlow = cv::optflow::createOptFlow_DeepFlow();
+
+    while (currentFrame < nbFrames)
+    {
+        double minimalSharpness = std::numeric_limits<double>::max();
+        double minimalSharpnessRescaled = std::numeric_limits<double>::max();
+        double flow = -1.;
+        double flowRescaled = -1.;
+
+        for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
+        {
+            ALICEVISION_LOG_DEBUG("media : " << mediaPaths.at(mediaIndex));
+            auto& feed = *feeds.at(mediaIndex);
+
+            if (currentFrame > 0)
+            {
+                previous = cvMat;
+                if (rescale)
+                    previousRescaled = cvRescaled;
+            }
+
+            cvMat = readImage(feed, 0); // Read image at full res
+            double sharpness = computeSharpness2(cvMat, int(cvMat.size().width / (720 / 200)));
+            minimalSharpness = std::min(minimalSharpness, sharpness);
+
+            if (rescale)
+            {
+                cvRescaled = readImage(feed, 720); // Read image and rescale it
+                double sharpnessRescaled = computeSharpness2(cvRescaled, 200);
+                minimalSharpnessRescaled = std::min(minimalSharpnessRescaled, sharpnessRescaled);
+            }
+
+            if (currentFrame > 0)
+            {
+                flow = estimateFlow(ptrFlow, cvMat, previous, int(cvMat.size().width / (720 / 20)));
+                if (rescale)
+                    flowRescaled = estimateFlow(ptrFlow, cvRescaled, previousRescaled, 20);
+            }
+
+            feed.goToNextFrame();
+        }
+
+        _sharpnessScores.push_back(minimalSharpness);
+        _flowScores.push_back(flow);
+        if (rescale)
+        {
+            _sharpnessScoresRescaled.push_back(minimalSharpnessRescaled);
+            _flowScoresRescaled.push_back(flowRescaled);
+        }
+        currentFrame++;
+        ALICEVISION_LOG_INFO("Finished processing frame " << currentFrame << "/" << nbFrames);
+    }
+    return true;
+}
+
+bool KeyframeSelector::exportAllScoresToFile(const std::string& folder) const
+{
+    std::vector<std::vector<double>> scores;
+    scores.push_back(_sharpnessScores);
+    scores.push_back(_sharpnessScoresRescaled);
+    scores.push_back(_flowScores);
+    scores.push_back(_flowScoresRescaled);
+
+    std::string header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;\n";
+
+    return exportScoresToFile(scores, folder, "scores.csv", header);
+}
+
+bool KeyframeSelector::exportScoresToFile(const std::vector<std::vector<double>>& scores,
+                                          const std::string& folder, const std::string& filename,
+                                          const std::string& header) const
+{
+    // Export the score vector to a CSV file
+    std::ofstream os;
+    os.open((fs::path(folder) / filename).string(), std::ios::app);
+
+    if (!os.is_open())
+    {
+        ALICEVISION_LOG_DEBUG("Unable to open the optical flow scores file: '" << filename << "'.");
+        return false;
+    }
+
+    os.seekp(0, std::ios::end); // Put the cursor at the end
+    if (os.tellp() == std::streampos(0)) // 'tellp' returns the cursor's position
+    {
+        // If the file does not exist, add a header
+        os << header;
+    }
+
+    for (size_t s = 0; s < scores.at(0).size(); s++)
+    {
+        os << s << ";";
+        for (size_t ss = 0; ss < scores.size(); ss++)
+        {
+            os << scores.at(ss).at(s) << ";";
+        }
+        os << "\n";
+    }
+    os.close();
     return true;
 }
 

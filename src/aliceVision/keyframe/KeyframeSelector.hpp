@@ -49,6 +49,32 @@ public:
     bool writeSelection(const std::string& outputFolder, const std::vector<std::string>& mediaPaths, const std::vector<std::string>& brands, const std::vector<std::string>& models, const std::vector<float>& mmFocals);
 
     /**
+     * @brief Compute the sharpness score for every frame of the video and export it in a CSV file.
+     * @param[in] mediaPaths For each camera, give the media file name (path)
+     * @param[in] folder The folder where you want to save the statistics file
+     * @param[in] filename The filename of the sharpness score file
+     * @return False it cannot open the file, true if it succeed
+     */
+    bool exportSharpnessToFile(const std::vector<std::string>& mediaPaths, const std::string& folder,
+                               const std::string& filename = "sharpness.csv") const;
+
+    /**
+     * @brief Compute the optical flow score for every frame of the video and export it in a CSV file.
+     * @param[in] mediaPaths For each camera, give the media file name (path)
+     * @param[in] folder The folder where you want to save the statistics file
+     * @param[in] filename The filename of the sharpness score file
+     * @return False it cannot open the file, true if it succeed
+     */
+    bool exportFlowToFile(const std::vector<std::string>& mediaPaths, const std::string& folder,
+                          const std::string& filename = "flow.csv") const;
+
+
+    bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false);
+    bool exportAllScoresToFile(const std::string& outputFolder) const;
+    bool exportScoresToFile(const std::vector<std::vector<double>>& scores, const std::string& folder,
+                        const std::string& filename, const std::string& header) const;
+
+    /**
      * @brief Set the mininum frame step for the processing algorithm
      * @param[in] frameStep minimum number of frames between two keyframes
      */
@@ -93,6 +119,15 @@ private:
 
     /// List of selected frames
     std::vector<unsigned int> _selected;
+
+    /// Sharpness scores for each frame (full res)
+    std::vector<double> _sharpnessScores;
+    /// Sharpness scores for each frame (rescaled)
+    std::vector<double> _sharpnessScoresRescaled;
+    /// Optical flow scores for each frame (full res)
+    std::vector<double> _flowScores;
+    /// Optical flow scores for each frame (rescaled)
+    std::vector<double> _flowScoresRescaled;
 };
 
 } // namespace keyframe 
