@@ -615,6 +615,10 @@ bool KeyframeSelector::exportFlowToFile(const std::vector<std::string>& mediaPat
     return true;
 }
 
+/*
+ * Identical to computeSharpness except that the sliding window moves from half windowSize pixels
+ * instead of 1 pixels at each iteration. Results seem identical, but processing is faster.
+ */
 double computeSharpness2(const cv::Mat& grayscaleImage, const int windowSize)
 {
     cv::Mat sum, sumsq, laplacian;
@@ -649,7 +653,7 @@ double computeSharpness2(const cv::Mat& grayscaleImage, const int windowSize)
 }
 
 double estimateFlow(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat& grayscaleImage,
-                    const Mat& previousGrayscaleImage, const int windowSize)
+                    const cv::Mat& previousGrayscaleImage, const int windowSize)
 {
     double minmaxflow = std::numeric_limits<double>::max();
     cv::Mat flow;
@@ -682,6 +686,25 @@ double estimateFlow(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat&
 
     minmaxflow = std::min(minmaxflow, maxflow);
     return minmaxflow;
+}
+
+double estimateGlobalFlow(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat& grayscaleImage,
+                    const cv::Mat& previousGrayscaleImage)
+{
+    cv::Mat flow;
+    ptrFlow->calc(grayscaleImage, previousGrayscaleImage, flow);
+
+    cv::Mat sumflow;
+    cv::integral(flow, sumflow, CV_64F);
+
+    cv::Point2d tl = sumflow.at<cv::Point2d>(0, 0);
+    cv::Point2d tr = sumflow.at<cv::Point2d>(0, sumflow.size().width - 1);
+    cv::Point2d bl = sumflow.at<cv::Point2d>(sumflow.size().height - 1, 0);
+    cv::Point2d br = sumflow.at<cv::Point2d>(sumflow.size().height - 1, sumflow.size().width -1);
+    cv::Point2d s1 = br + tl - tr - bl;
+    double norm = std::hypot(s1.x, s1.y) / (sumflow.size().width * sumflow.size().height);
+
+    return std::max(0.0, norm);
 }
 
 bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, bool rescale)
@@ -777,9 +800,11 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
 
             if (currentFrame > 0)
             {
-                flow = estimateFlow(ptrFlow, cvMat, previous, int(cvMat.size().width / (720 / 20)));
+                // flow = estimateFlow(ptrFlow, cvMat, previous, int(cvMat.size().width / (720 / 20)));
+                flow = estimateGlobalFlow(ptrFlow, cvMat, previous);
                 if (rescale)
-                    flowRescaled = estimateFlow(ptrFlow, cvRescaled, previousRescaled, 20);
+                    // flowRescaled = estimateFlow(ptrFlow, cvRescaled, previousRescaled, 20);
+                    flowRescaled = estimateGlobalFlow(ptrFlow, cvRescaled, previousRescaled);
             }
 
             feed.goToNextFrame();

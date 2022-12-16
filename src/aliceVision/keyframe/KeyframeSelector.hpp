@@ -27,26 +27,28 @@ class KeyframeSelector
 public:    
 
     /**
-     * @brief Process media paths and build a list of selected frames using a smart method based on optical flow estimation
-     * @param[in] mediaPaths for each camera, give the media file name (path)
+     * @brief Process media paths and build a list of selected frames using a smart method based on optical flow estimation.
+     * @param[in] mediaPaths For each camera, give the media file name (path)
      */
     void processSmart(const std::vector<std::string>& mediaPaths);
 
     /**
-     * @brief Process media paths and build a list of selected frames using a regular sampling over time
+     * @brief Process media paths and build a list of selected frames using a regular sampling over time.
      * @param[in] mediaPaths for each camera, give the media file name (path)
      */
     void processRegular(const std::vector<std::string>& mediaPaths);
 
     /**
-     * @brief Write selected frames indices
-     * @param[in] outputFolder folder for output images
-     * @param[in] mediaPaths for each camera, give the media file name (path)
-     * @param[in] brands for each camera, give the brand name
-     * @param[in] models for each camera, give the models name
-     * @param[in] mmFocals for each camera, give the focal in mm
+     * @brief Write selected frames indices.
+     * @param[in] outputFolder Folder for output images
+     * @param[in] mediaPaths For each camera, give the media file name (path)
+     * @param[in] brands For each camera, give the brand name
+     * @param[in] models For each camera, give the models name
+     * @param[in] mmFocals For each camera, give the focal in mm
      */
-    bool writeSelection(const std::string& outputFolder, const std::vector<std::string>& mediaPaths, const std::vector<std::string>& brands, const std::vector<std::string>& models, const std::vector<float>& mmFocals);
+    bool writeSelection(const std::string& outputFolder, const std::vector<std::string>& mediaPaths,
+                        const std::vector<std::string>& brands, const std::vector<std::string>& models,
+                        const std::vector<float>& mmFocals);
 
     /**
      * @brief Compute the sharpness score for every frame of the video and export it in a CSV file.
@@ -69,13 +71,31 @@ public:
                           const std::string& filename = "flow.csv") const;
 
 
+    /**
+     * @brief Compute the sharpness and flow scores for the input media paths.
+     * @param[in] mediaPath For each camera, give the media file name (path)
+     * @param[in] rescale True if the score computation is also to be performed on rescaled images
+     */
     bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false);
+
+    /**
+     * @brief Export all the sharpness and flow scores (full resolution and rescaled) to a CSV file.
+     * @param[in] outputFolder The folder in which the CSV file will be written
+     */
     bool exportAllScoresToFile(const std::string& outputFolder) const;
+
+    /**
+     * @brief Export score vectors to a CSV file.
+     * @param[in] scores A vector containing at least one score vector
+     * @param[in] folder Folder in which the CSV file will be written
+     * @param[in] finelame Name of the CSV file that will be written
+     * @param[in] header Header for the CSV file that will be written
+     */
     bool exportScoresToFile(const std::vector<std::vector<double>>& scores, const std::string& folder,
                         const std::string& filename, const std::string& header) const;
 
     /**
-     * @brief Set the mininum frame step for the processing algorithm
+     * @brief Set the mininum frame step for the processing algorithm.
      * @param[in] frameStep minimum number of frames between two keyframes
      */
     void setMinFrameStep(unsigned int frameStep)
@@ -84,8 +104,8 @@ public:
     }
 
     /**
-     * @brief Set the maximum number of output frames for the processing algorithm
-     * @param[in] nbFrame maximum number of output frames (if 0, no limit)
+     * @brief Set the maximum number of output frames for the processing algorithm.
+     * @param[in] nbFrame Maximum number of output frames (if 0, no limit)
      */
     void setMaxOutFrame(unsigned int nbFrame)
     {
@@ -93,8 +113,8 @@ public:
     }
 
     /**
-     * @brief Get the minimum frame step for the processing algorithm
-     * @return minimum number of frames between two keyframes
+     * @brief Get the minimum frame step for the processing algorithm.
+     * @return Minimum number of frames between two keyframes
      */
     unsigned int getMinFrameStep() const
     {
@@ -102,7 +122,7 @@ public:
     }
 
     /**
-     * @brief Get the maximum number of output frames for the processing algorithm
+     * @brief Get the maximum number of output frames for the processing algorithm.
      * @return maximum number of output frames (if 0, no limit)
      */
     unsigned int getMaxOutFrame() const
