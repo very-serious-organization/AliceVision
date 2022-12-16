@@ -38,9 +38,11 @@ int aliceVision_main(int argc, char** argv)
     std::vector<std::string> models;        // media model list
     std::vector<float> mmFocals;            // media focal (mm) list
 
+    bool computeScores = true;              // compute sharpness and optical flow scores for all images
     bool computeRescaled = true;            // compute scores for rescaled images as well
     bool exportSharpness = true;            // export sharpness scores to a CSV file
     bool exportFlow = true;                 // export flow scores to a CSV file
+    bool noSelection = false;               // do not perform the keyframe selection after computing the scores
 
     // Algorithm variables
     unsigned int minFrameStep = 12;
@@ -56,12 +58,16 @@ int aliceVision_main(int argc, char** argv)
             "Output keyframes folder for .jpg.")
         ("useRegularKeyframes", po::value<bool>(&useRegularKeyframes)->required(),
             "Use regular keyframe extraction instead of the smart method.")
+        ("computeScores", po::value<bool>(&computeScores)->required(),
+            "Compute sharpness and optical flow scores for all input frames at full resolution.")
         ("computeRescaled", po::value<bool>(&computeRescaled)->required(),
             "Compute scores for rescaled images in addition to full resolution images.")
         ("exportSharpness", po::value<bool>(&exportSharpness)->required(),
             "Export each frame's sharpness score to a CSV file.")
         ("exportFlow", po::value<bool>(&exportFlow)->required(),
-            "Export each frame's flow score to a CSV file.");
+            "Export each frame's flow score to a CSV file.")
+        ("noSelection", po::value<bool>(&noSelection)->required(),
+            "Do not perform the keyframe selection after the scores' computation.");
 
     po::options_description metadataParams("Metadata parameters");  
     metadataParams.add_options()
@@ -125,12 +131,17 @@ int aliceVision_main(int argc, char** argv)
     selector.setMinFrameStep(minFrameStep);
     selector.setMaxOutFrame(maxNbOutFrame);
 
-    bool ret = selector.computeScores(mediaPaths, computeRescaled);
-
-    if (exportSharpness && exportFlow)
+    if (computeScores)
     {
-        ret = selector.exportAllScoresToFile(outputFolder);
-        return EXIT_SUCCESS;
+        bool ret = selector.computeScores(mediaPaths, computeRescaled);
+        if (exportSharpness && exportFlow) // Only handle the export of all scores for now
+        {
+            ret = selector.exportAllScoresToFile(outputFolder);
+        }
+        if (noSelection)
+        {
+            return EXIT_SUCCESS;
+        }
     }
 
     // process
