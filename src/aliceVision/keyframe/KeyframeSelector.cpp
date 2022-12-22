@@ -707,12 +707,70 @@ double estimateGlobalFlow(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv
     return std::max(0.0, norm);
 }
 
-bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, bool rescale)
+std::vector<double> estimateFlowOnBorders(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat& grayscaleImage,
+                        const cv::Mat& previousGrayscaleImage, const uint borderSize)
+{
+    cv::Mat flow;
+    ptrFlow->calc(grayscaleImage, previousGrayscaleImage, flow);
+
+    cv::Mat sumflow;
+    cv::integral(flow, sumflow, CV_64F);
+    std::vector<double> norms; // top, bottom, left, right, global
+    double norm;
+
+    cv::Point2d tlUp = sumflow.at<cv::Point2d>(0, 0);
+    cv::Point2d trUp = sumflow.at<cv::Point2d>(0, sumflow.size().width - 1);
+    cv::Point2d blUp = sumflow.at<cv::Point2d>(borderSize - 1, 0);
+    cv::Point2d brUp = sumflow.at<cv::Point2d>(borderSize - 1, sumflow.size().width - 1);
+    cv::Point2d sUp = brUp + tlUp - trUp - blUp;
+    norm = std::hypot(sUp.x, sUp.y) / (sumflow.size().width * borderSize);
+    norms.push_back(norm);
+
+    cv::Point2d tlDown = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 1, 0);
+    cv::Point2d trDown = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 1, sumflow.size().width - 1);
+    cv::Point2d blDown = sumflow.at<cv::Point2d>(sumflow.size().height - 1, 0);
+    cv::Point2d brDown = sumflow.at<cv::Point2d>(sumflow.size().height - 1, sumflow.size().width - 1);
+    cv::Point2d sDown = brDown + tlDown - trDown - blDown;
+    norm = std::hypot(sDown.x, sDown.y) / (sumflow.size().width * borderSize);
+    norms.push_back(norm);
+
+    cv::Point2d tlLeft = sumflow.at<cv::Point2d>(borderSize, 0);
+    cv::Point2d trLeft = sumflow.at<cv::Point2d>(borderSize, borderSize - 1);
+    cv::Point2d blLeft = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 2, 0);
+    cv::Point2d brLeft = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 2, borderSize - 1);
+    cv::Point2d sLeft = brLeft + tlLeft - trLeft - blLeft;
+    norm = std::hypot(sLeft.x, sLeft.y) / ((sumflow.size().height - (borderSize * 2)) * borderSize);
+    norms.push_back(norm);
+
+    cv::Point2d tlRight = sumflow.at<cv::Point2d>(borderSize, sumflow.size().width - 1 - borderSize);
+    cv::Point2d trRight = sumflow.at<cv::Point2d>(borderSize, sumflow.size().width - 1);
+    cv::Point2d blRight = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 2, sumflow.size().width - 1 - borderSize);
+    cv::Point2d brRight = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 2, sumflow.size().width - 1);
+    cv::Point2d sRight = brRight + tlRight - trRight - blRight;
+    norm = std::hypot(sRight.x, sRight.y) / ((sumflow.size().height - (borderSize * 2)) * borderSize);
+    norms.push_back(norm);
+
+    cv::Point2d tl = sumflow.at<cv::Point2d>(0, 0);
+    cv::Point2d tr = sumflow.at<cv::Point2d>(0, sumflow.size().width - 1);
+    cv::Point2d bl = sumflow.at<cv::Point2d>(sumflow.size().height - 1, 0);
+    cv::Point2d br = sumflow.at<cv::Point2d>(sumflow.size().height - 1, sumflow.size().width -1);
+    cv::Point2d s1 = br + tl - tr - bl;
+    norm = std::hypot(s1.x, s1.y) / (sumflow.size().width * sumflow.size().height);
+    norms.push_back(norm);
+
+    return norms;
+}
+
+bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, bool rescale, bool flowOnBorders)
 {
     _sharpnessScores.clear();
     _sharpnessScoresRescaled.clear();
     _flowScores.clear();
     _flowScoresRescaled.clear();
+    _flowScoresOnTopBorder.clear();
+    _flowScoresOnBottomBorder.clear();
+    _flowScoresOnLeftBorder.clear();
+    _flowScoresOnRightBorder.clear();
 
     // Create feeds and count minimum number of frames
     std::size_t nbFrames = std::numeric_limits<std::size_t>::max();
@@ -774,6 +832,10 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
         double minimalSharpnessRescaled = std::numeric_limits<double>::max();
         double flow = -1.;
         double flowRescaled = -1.;
+        double flowRescaledTop = -1.;
+        double flowRescaledBottom = -1.;
+        double flowRescaledLeft = -1.;
+        double flowRescaledRight = -1.;
 
         for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
         {
@@ -788,8 +850,9 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
             }
 
             cvMat = readImage(feed, 0); // Read image at full res
-            double sharpness = computeSharpness2(cvMat, int(cvMat.size().width / (720 / 200)));
-            minimalSharpness = std::min(minimalSharpness, sharpness);
+            // double sharpness = computeSharpness2(cvMat, int(cvMat.size().width / (720 / 200)));
+            // minimalSharpness = std::min(minimalSharpness, sharpness);
+            minimalSharpness = -1.0;
 
             if (rescale)
             {
@@ -801,10 +864,24 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
             if (currentFrame > 0)
             {
                 // flow = estimateFlow(ptrFlow, cvMat, previous, int(cvMat.size().width / (720 / 20)));
-                flow = estimateGlobalFlow(ptrFlow, cvMat, previous);
+                // flow = estimateGlobalFlow(ptrFlow, cvMat, previous);
+                flow = -1.0;
                 if (rescale)
                     // flowRescaled = estimateFlow(ptrFlow, cvRescaled, previousRescaled, 20);
-                    flowRescaled = estimateGlobalFlow(ptrFlow, cvRescaled, previousRescaled);
+                    if (flowOnBorders) {
+                        std::vector<double> flowBorders = estimateFlowOnBorders(ptrFlow, cvRescaled, previousRescaled, 100);
+                        flowRescaled = flowBorders.back();
+                        flowBorders.pop_back();
+                        flowRescaledRight = flowBorders.back();
+                        flowBorders.pop_back();
+                        flowRescaledLeft = flowBorders.back();
+                        flowBorders.pop_back();
+                        flowRescaledBottom = flowBorders.back();
+                        flowBorders.pop_back();
+                        flowRescaledTop = flowBorders.back();
+                    } else {
+                        flowRescaled = estimateGlobalFlow(ptrFlow, cvRescaled, previousRescaled);
+                    }
             }
 
             feed.goToNextFrame();
@@ -816,6 +893,12 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
         {
             _sharpnessScoresRescaled.push_back(minimalSharpnessRescaled);
             _flowScoresRescaled.push_back(flowRescaled);
+            if (flowOnBorders) {
+                _flowScoresOnTopBorder.push_back(flowRescaledTop);
+                _flowScoresOnBottomBorder.push_back(flowRescaledBottom);
+                _flowScoresOnLeftBorder.push_back(flowRescaledLeft);
+                _flowScoresOnRightBorder.push_back(flowRescaledRight);
+            }
         }
         currentFrame++;
         ALICEVISION_LOG_INFO("Finished processing frame " << currentFrame << "/" << nbFrames);
@@ -823,7 +906,7 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
     return true;
 }
 
-bool KeyframeSelector::exportAllScoresToFile(const std::string& folder) const
+bool KeyframeSelector::exportAllScoresToFile(const std::string& folder, bool flowOnBorders) const
 {
     std::vector<std::vector<double>> scores;
     scores.push_back(_sharpnessScores);
@@ -831,7 +914,17 @@ bool KeyframeSelector::exportAllScoresToFile(const std::string& folder) const
     scores.push_back(_flowScores);
     scores.push_back(_flowScoresRescaled);
 
-    std::string header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;\n";
+    std::string header;
+    if (flowOnBorders)
+    {
+        scores.push_back(_flowScoresOnTopBorder);
+        scores.push_back(_flowScoresOnBottomBorder);
+        scores.push_back(_flowScoresOnLeftBorder);
+        scores.push_back(_flowScoresOnRightBorder);
+        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;OFRescaledTop;OFRescaledBottom;OFRescaledLeft;OFRescaledRight\n";
+    } else {
+        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;\n";
+    }
 
     return exportScoresToFile(scores, folder, "scores.csv", header);
 }

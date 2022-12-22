@@ -75,14 +75,16 @@ public:
      * @brief Compute the sharpness and flow scores for the input media paths.
      * @param[in] mediaPath For each camera, give the media file name (path)
      * @param[in] rescale True if the score computation is also to be performed on rescaled images
+     * @param[in] flowOnBorders True if the optical flow score is computed on the frame's borders
      */
-    bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false);
+    bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false, bool flowOnBorders = false);
 
     /**
      * @brief Export all the sharpness and flow scores (full resolution and rescaled) to a CSV file.
      * @param[in] outputFolder The folder in which the CSV file will be written
+     * @param[in] flowOnBorders True if the optical flow scores have been computed on each frame's borders
      */
-    bool exportAllScoresToFile(const std::string& outputFolder) const;
+    bool exportAllScoresToFile(const std::string& outputFolder, bool flowOnBorders) const;
 
     /**
      * @brief Export score vectors to a CSV file.
@@ -148,6 +150,14 @@ private:
     std::vector<double> _flowScores;
     /// Optical flow scores for each frame (rescaled)
     std::vector<double> _flowScoresRescaled;
+    /// Optical flow scores for each frame's top border
+    std::vector<double> _flowScoresOnTopBorder;
+    /// Optical flow scores for each frame's bottom border
+    std::vector<double> _flowScoresOnBottomBorder;
+    /// Optical flow scores for each frame's left border
+    std::vector<double> _flowScoresOnLeftBorder;
+    /// Optical flow scores for each frame's right border
+    std::vector<double> _flowScoresOnRightBorder;
 };
 
 } // namespace keyframe 
