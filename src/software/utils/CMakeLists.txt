@@ -6,7 +6,7 @@ set(FOLDER_SOFTWARE_UTILS "Software/Utils")
 
 
 if(ALICEVISION_HAVE_CUDA)
-alicevision_add_software(aliceVision_utils_hardwareResources
+alicevision_add_software(aliceVision_hardwareResources
   SOURCE main_hardwareResources.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -18,10 +18,11 @@ endif()
 if(ALICEVISION_BUILD_SFM)
 # Uncertainty
 if(ALICEVISION_HAVE_UNCERTAINTYTE)
-    alicevision_add_software(aliceVision_utils_computeUncertainty
+    alicevision_add_software(aliceVision_computeUncertainty
       SOURCE main_computeUncertainty.cpp
       FOLDER ${FOLDER_SOFTWARE_UTILS}
       LINKS aliceVision_sfm
+            aliceVision_system
             ${CUDA_LIBRARIES}
             ${CUDA_CUBLAS_LIBRARIES}
             ${CUDA_cusparse_LIBRARY}
@@ -35,7 +36,7 @@ if(ALICEVISION_HAVE_UNCERTAINTYTE)
 # message(warning "CUDA_cusparse_LIBRARY: ${CUDA_cusparse_LIBRARY}")
 endif()
 
-alicevision_add_software(aliceVision_utils_imageProcessing 
+alicevision_add_software(aliceVision_imageProcessing 
     SOURCE main_imageProcessing.cpp
     FOLDER ${FOLDER_SOFTWARE_UTILS}
     LINKS aliceVision_system
@@ -48,10 +49,10 @@ alicevision_add_software(aliceVision_utils_imageProcessing
 )
 
 if(ALICEVISION_HAVE_OPENCV)
-  target_link_libraries(aliceVision_utils_imageProcessing_exe PRIVATE ${OpenCV_LIBS})
+  target_link_libraries(aliceVision_imageProcessing_exe PRIVATE ${OpenCV_LIBS})
 endif()
 
-alicevision_add_software(aliceVision_utils_importMiddlebury
+alicevision_add_software(aliceVision_importMiddlebury
         SOURCE main_importMiddlebury.cpp
         FOLDER ${FOLDER_SOFTWARE_UTILS}
         LINKS
@@ -64,42 +65,45 @@ alicevision_add_software(aliceVision_utils_importMiddlebury
         )
 
 # Voctree creation
-alicevision_add_software(aliceVision_utils_voctreeCreation
+alicevision_add_software(aliceVision_voctreeCreation
   SOURCE main_voctreeCreation.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_voctree
         aliceVision_feature
         aliceVision_sfmData
         aliceVision_sfmDataIO
+        aliceVision_system
         Boost::program_options
 )
 
 # Voctree query utility
-alicevision_add_software(aliceVision_utils_voctreeQueryUtility
+alicevision_add_software(aliceVision_voctreeQueryUtility
   SOURCE main_voctreeQueryUtility.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_voctree
         aliceVision_sfm
         aliceVision_sfmData
         aliceVision_sfmDataIO
+        aliceVision_system
         Boost::program_options
         Boost::boost
         Boost::timer
 )
 
 # Voctree statistics
-alicevision_add_software(aliceVision_utils_voctreeStatistics
+alicevision_add_software(aliceVision_voctreeStatistics
   SOURCE main_voctreeStatistics.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_voctree
         aliceVision_sfmData
+        aliceVision_system
         aliceVision_sfmDataIO
         Boost::program_options
         Boost::boost
 )
 
 # Frustrum filtering
-alicevision_add_software(aliceVision_utils_frustumFiltering
+alicevision_add_software(aliceVision_frustumFiltering
   SOURCE main_frustumFiltering.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -114,7 +118,7 @@ alicevision_add_software(aliceVision_utils_frustumFiltering
 
 # Transform rig
 if(ALICEVISION_HAVE_ALEMBIC)
-  alicevision_add_software(aliceVision_utils_rigTransform
+  alicevision_add_software(aliceVision_rigTransform
     SOURCE main_rigTransform.cpp
     FOLDER ${FOLDER_SOFTWARE_UTILS}
     LINKS aliceVision_sfmData
@@ -122,6 +126,7 @@ if(ALICEVISION_HAVE_ALEMBIC)
           aliceVision_localization
           aliceVision_dataio
           aliceVision_rig
+          aliceVision_system
           Boost::program_options
           Boost::filesystem
   )
@@ -129,7 +134,7 @@ endif()
 
 # SfM quality evaluation
 # - quality comparison against a GT camera path (MultiView Evaluation dataset)
-alicevision_add_software(aliceVision_utils_qualityEvaluation
+alicevision_add_software(aliceVision_qualityEvaluation
   SOURCE main_qualityEvaluation.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -141,7 +146,7 @@ alicevision_add_software(aliceVision_utils_qualityEvaluation
 )
 
 # SfM alignment
-alicevision_add_software(aliceVision_utils_sfmAlignment
+alicevision_add_software(aliceVision_sfmAlignment
   SOURCE main_sfmAlignment.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -153,7 +158,7 @@ alicevision_add_software(aliceVision_utils_sfmAlignment
 )
 
 # SfM transfer
-alicevision_add_software(aliceVision_utils_sfmTransfer
+alicevision_add_software(aliceVision_sfmTransfer
   SOURCE main_sfmTransfer.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -165,7 +170,7 @@ alicevision_add_software(aliceVision_utils_sfmTransfer
 )
 
 # SfM transform
-alicevision_add_software(aliceVision_utils_sfmTransform
+alicevision_add_software(aliceVision_sfmTransform
   SOURCE main_sfmTransform.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -177,7 +182,7 @@ alicevision_add_software(aliceVision_utils_sfmTransform
 )
 
 # SfM color harmonize
-alicevision_add_software(aliceVision_utils_sfmColorHarmonize
+alicevision_add_software(aliceVision_sfmColorHarmonize
   SOURCE main_sfmColorHarmonize.cpp
          sfmColorHarmonize/colorHarmonizeEngineGlobal.cpp # TODO
   FOLDER ${FOLDER_SOFTWARE_UTILS}
@@ -199,7 +204,7 @@ alicevision_add_software(aliceVision_utils_sfmColorHarmonize
 )
 
 # SfM localization
-alicevision_add_software(aliceVision_utils_sfmLocalization
+alicevision_add_software(aliceVision_sfmLocalization
   SOURCE main_sfmLocalization.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -213,7 +218,7 @@ alicevision_add_software(aliceVision_utils_sfmLocalization
 
 # Keyframe selection
 # - export keyframes from video files / image sequence directories
-alicevision_add_software(aliceVision_utils_keyframeSelection
+alicevision_add_software(aliceVision_keyframeSelection
   SOURCE main_keyframeSelection.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -225,17 +230,18 @@ alicevision_add_software(aliceVision_utils_keyframeSelection
 
 
 # Print distances between 3D objects
-alicevision_add_software(aliceVision_utils_sfmDistances
+alicevision_add_software(aliceVision_sfmDistances
   SOURCE main_sfmDistances.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_sfm
         aliceVision_sfmData
         aliceVision_sfmDataIO
+        aliceVision_system
         ${Boost_LIBRARIES}
 )
 
 # Split 360 images in input in order to export square images
-alicevision_add_software(aliceVision_utils_split360Images
+alicevision_add_software(aliceVision_split360Images
   SOURCE main_split360Images.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -249,7 +255,7 @@ alicevision_add_software(aliceVision_utils_split360Images
 
 
 # Project 180° fisheye images into equirectangular
-alicevision_add_software(aliceVision_utils_fisheyeProjection
+alicevision_add_software(aliceVision_fisheyeProjection
   SOURCE main_fisheyeProjection.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -260,7 +266,7 @@ alicevision_add_software(aliceVision_utils_fisheyeProjection
 )
 
 # Lighting estimation from picture, albedo and geometry
-alicevision_add_software(aliceVision_utils_lightingEstimation
+alicevision_add_software(aliceVision_lightingEstimation
   SOURCE main_lightingEstimation.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -275,7 +281,7 @@ alicevision_add_software(aliceVision_utils_lightingEstimation
 
 
 # Lighting estimation from picture, albedo and geometry
-alicevision_add_software(aliceVision_utils_generateSampleScene
+alicevision_add_software(aliceVision_generateSampleScene
   SOURCE main_generateSampleScene.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
@@ -289,7 +295,7 @@ alicevision_add_software(aliceVision_utils_generateSampleScene
 
 # Perform color chart detection
 if(ALICEVISION_HAVE_OPENCV_CONTRIB)
-  alicevision_add_software(aliceVision_utils_colorCheckerDetection
+  alicevision_add_software(aliceVision_colorCheckerDetection
     SOURCE main_colorCheckerDetection.cpp
     FOLDER ${FOLDER_SOFTWARE_UTILS}
     LINKS aliceVision_system
@@ -305,7 +311,7 @@ endif()
 
 # Perform color correction
 if(ALICEVISION_HAVE_OPENCV_CONTRIB)
-  alicevision_add_software(aliceVision_utils_colorCheckerCorrection
+  alicevision_add_software(aliceVision_colorCheckerCorrection
     SOURCE main_colorCheckerCorrection.cpp
     FOLDER ${FOLDER_SOFTWARE_UTILS}
     LINKS aliceVision_system
@@ -323,7 +329,7 @@ endif() # ALICEVISION_BUILD_SFM
 if(ALICEVISION_BUILD_MVS)
 
 # Merge two meshes
-alicevision_add_software(aliceVision_utils_mergeMeshes
+alicevision_add_software(aliceVision_mergeMeshes
   SOURCE main_mergeMeshes.cpp
   FOLDER ${FOLDER_SOFTWARE_UTILS}
   LINKS aliceVision_system
