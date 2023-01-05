@@ -10,6 +10,8 @@
 #include <aliceVision/dataio/FeedProvider.hpp>
 #include <boost/filesystem.hpp>
 
+#include <algorithm>
+#include <iostream>
 #include <random>
 #include <tuple>
 #include <cassert>
@@ -734,6 +736,8 @@ std::vector<double> estimateFlowOnBorders(const cv::Ptr<cv::DenseOpticalFlow>& p
     norm = std::hypot(sDown.x, sDown.y) / (sumflow.size().width * borderSize);
     norms.push_back(norm);
 
+    // TODO: test with full left and right borders. Here, there is no overlapping between the left/right and
+    // top/bottom borders, so we might be missing out on some extra information for the left and right borders.
     cv::Point2d tlLeft = sumflow.at<cv::Point2d>(borderSize, 0);
     cv::Point2d trLeft = sumflow.at<cv::Point2d>(borderSize, borderSize - 1);
     cv::Point2d blLeft = sumflow.at<cv::Point2d>(sumflow.size().height - borderSize - 2, 0);
@@ -893,7 +897,8 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
         {
             _sharpnessScoresRescaled.push_back(minimalSharpnessRescaled);
             _flowScoresRescaled.push_back(flowRescaled);
-            if (flowOnBorders) {
+            if (flowOnBorders)
+            {
                 _flowScoresOnTopBorder.push_back(flowRescaledTop);
                 _flowScoresOnBottomBorder.push_back(flowRescaledBottom);
                 _flowScoresOnLeftBorder.push_back(flowRescaledLeft);
@@ -901,9 +906,74 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
             }
         }
         currentFrame++;
-        ALICEVISION_LOG_INFO("Finished processing frame " << currentFrame << "/" << nbFrames);
+        ALICEVISION_LOG_DEBUG("Finished processing frame " << currentFrame << "/" << nbFrames);
     }
     return true;
+}
+
+double findMedian(const std::vector<double>& vec)
+{
+    std::vector<double> vecCopy = vec;
+    if (vecCopy.size() > 0 && vecCopy.size() % 2 == 0)
+    {
+        const auto medianIt1 = vecCopy.begin() + vecCopy.size() / 2 - 1;
+        const auto medianIt2 = vecCopy.begin() + vecCopy.size() / 2;
+        std::nth_element(vecCopy.begin(), medianIt1, vecCopy.end());
+        const auto med1 = *medianIt1;
+        std::nth_element(vecCopy.begin(), medianIt2, vecCopy.end());
+        const auto med2 = *medianIt2;
+        return (med1 + med2) / 2.0;
+    }
+    else if (vecCopy.size() > 0)
+    {
+        const auto medianIt = vecCopy.begin() + vecCopy.size() / 2;
+        std::nth_element(vecCopy.begin(), medianIt, vecCopy.end());
+        return *medianIt;
+    }
+    else
+    {
+        return 0.0;
+    }
+}
+
+void KeyframeSelector::selectFrames()
+{
+    _selected.clear();
+    double scoreTop, scoreBottom, scoreLeft, scoreRight;
+
+    ALICEVISION_LOG_DEBUG("Start selecting frames");
+
+    // TODO: imperfect medians, as they include the -1 value for the first frame
+    double medianTop = findMedian(_flowScoresOnTopBorder);
+    double medianBottom = findMedian(_flowScoresOnBottomBorder);
+    double medianLeft = findMedian(_flowScoresOnLeftBorder);
+    double medianRight = findMedian(_flowScoresOnRightBorder);
+
+    ALICEVISION_LOG_DEBUG("Median scores (top, bottom, left, right): " << medianTop << " " << medianBottom << " " <<
+        medianLeft << " " << medianRight);
+
+    for (std::size_t i = 0; i < _flowScoresOnTopBorder.size(); i++)
+    {
+        scoreTop = _flowScoresOnTopBorder.at(i);
+        scoreBottom = _flowScoresOnBottomBorder.at(i);
+        scoreLeft = _flowScoresOnLeftBorder.at(i);
+        scoreRight = _flowScoresOnRightBorder.at(i);
+
+        if (scoreTop >= medianTop && scoreBottom >= medianBottom &&
+            scoreLeft >= medianLeft && scoreRight >= medianRight)
+        {
+            ALICEVISION_LOG_DEBUG("Selecting frame " << i << "(" << scoreTop << " " << scoreBottom << " " <<
+                scoreLeft  << " " << scoreRight << ")");
+            _selected.push_back(i);
+        }
+        else
+        {
+            ALICEVISION_LOG_DEBUG("Rejecting frame " << i << "(" << scoreTop << " " << scoreBottom << " " <<
+                scoreLeft  << " " << scoreRight << ")");
+        }
+    }
+
+    ALICEVISION_LOG_DEBUG("Finished selecting frames");
 }
 
 bool KeyframeSelector::exportAllScoresToFile(const std::string& folder, bool flowOnBorders) const
@@ -915,16 +985,25 @@ bool KeyframeSelector::exportAllScoresToFile(const std::string& folder, bool flo
     scores.push_back(_flowScoresRescaled);
 
     std::string header;
+    std::vector<double> selectedFrames(_sharpnessScores.size(), 0);
+    for (std::size_t i = 0; i < _selected.size(); i++)
+    {
+        selectedFrames.at(_selected.at(i)) = 1;
+    }
+
     if (flowOnBorders)
     {
         scores.push_back(_flowScoresOnTopBorder);
         scores.push_back(_flowScoresOnBottomBorder);
         scores.push_back(_flowScoresOnLeftBorder);
         scores.push_back(_flowScoresOnRightBorder);
-        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;OFRescaledTop;OFRescaledBottom;OFRescaledLeft;OFRescaledRight\n";
-    } else {
-        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;\n";
+        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;OFRescaledTop;OFRescaledBottom;OFRescaledLeft;OFRescaledRight;SelectedFrame;\n";
+    } else
+    {
+        header = "FrameNb;Sharpness;SharpnessRescaled;OpticalFlow;OpticalFlowRescaled;SelectedFrame;\n";
     }
+
+    scores.push_back(selectedFrames);
 
     return exportScoresToFile(scores, folder, "scores.csv", header);
 }

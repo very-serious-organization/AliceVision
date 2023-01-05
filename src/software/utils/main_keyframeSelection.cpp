@@ -138,6 +138,8 @@ int aliceVision_main(int argc, char** argv)
     {
         ALICEVISION_LOG_INFO("Compute flow on borders: " << flowOnBorders);
         bool ret = selector.computeScores(mediaPaths, computeRescaled, flowOnBorders);
+        selector.selectFrames();
+        selector.writeSelection(outputFolder, mediaPaths, brands, models, mmFocals);
         if (exportSharpness && exportFlow) // Only handle the export of all scores for now
         {
             ret = selector.exportAllScoresToFile(outputFolder, flowOnBorders);

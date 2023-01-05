@@ -80,6 +80,11 @@ public:
     bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false, bool flowOnBorders = false);
 
     /**
+     * @brief Based on the computed scores, select frames that are deemed relevant.
+     */
+    void selectFrames();
+
+    /**
      * @brief Export all the sharpness and flow scores (full resolution and rescaled) to a CSV file.
      * @param[in] outputFolder The folder in which the CSV file will be written
      * @param[in] flowOnBorders True if the optical flow scores have been computed on each frame's borders
