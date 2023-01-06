@@ -43,6 +43,7 @@ int aliceVision_main(int argc, char** argv)
     bool flowOnBorders = false;             // compute flow scores on the frame's borders
     bool exportSharpness = true;            // export sharpness scores to a CSV file
     bool exportFlow = true;                 // export flow scores to a CSV file
+    bool refineSelection = true;            // refine the initial frame selection
     bool noSelection = false;               // do not perform the keyframe selection after computing the scores
 
     // Algorithm variables
@@ -69,6 +70,8 @@ int aliceVision_main(int argc, char** argv)
             "Export each frame's sharpness score to a CSV file.")
         ("exportFlow", po::value<bool>(&exportFlow)->required(),
             "Export each frame's flow score to a CSV file.")
+        ("refineSelection", po::value<bool>(&refineSelection)->required(),
+            "Refine the initial frame selection.")
         ("noSelection", po::value<bool>(&noSelection)->required(),
             "Do not perform the keyframe selection after the scores' computation.");
 
@@ -138,7 +141,7 @@ int aliceVision_main(int argc, char** argv)
     {
         ALICEVISION_LOG_INFO("Compute flow on borders: " << flowOnBorders);
         bool ret = selector.computeScores(mediaPaths, computeRescaled, flowOnBorders);
-        selector.selectFrames();
+        selector.selectFrames(refineSelection);
         selector.writeSelection(outputFolder, mediaPaths, brands, models, mmFocals);
         if (exportSharpness && exportFlow) // Only handle the export of all scores for now
         {
