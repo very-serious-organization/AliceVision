@@ -936,12 +936,25 @@ double findMedian(const std::vector<double>& vec)
     }
 }
 
-void KeyframeSelector::selectFrames()
+void KeyframeSelector::selectFrames(bool refine)
 {
     _selected.clear();
-    double scoreTop, scoreBottom, scoreLeft, scoreRight;
+    std::vector<unsigned int> unrefinedSelection = selectFramesWithMotion();
+    std::vector<unsigned int> refinedSelection;
 
-    ALICEVISION_LOG_DEBUG("Start selecting frames");
+    if (refine)
+        refinedSelection = refineFrameSelection(unrefinedSelection);
+    else
+        refinedSelection = unrefinedSelection;
+
+    _selected = refinedSelection;
+}
+
+std::vector<unsigned int> KeyframeSelector::selectFramesWithMotion()
+{
+    std::vector<unsigned int> selectedFrames;
+    double scoreTop, scoreBottom, scoreLeft, scoreRight;
+    ALICEVISION_LOG_DEBUG("Start selecting frames with motion");
 
     // TODO: imperfect medians, as they include the -1 value for the first frame
     double medianTop = findMedian(_flowScoresOnTopBorder);
@@ -964,7 +977,7 @@ void KeyframeSelector::selectFrames()
         {
             ALICEVISION_LOG_DEBUG("Selecting frame " << i << "(" << scoreTop << " " << scoreBottom << " " <<
                 scoreLeft  << " " << scoreRight << ")");
-            _selected.push_back(i);
+            selectedFrames.push_back(i);
         }
         else
         {
@@ -973,7 +986,80 @@ void KeyframeSelector::selectFrames()
         }
     }
 
-    ALICEVISION_LOG_DEBUG("Finished selecting frames");
+    ALICEVISION_LOG_DEBUG("Finished selecting frames with motion");
+    return selectedFrames;
+}
+
+std::vector<std::vector<unsigned int>> clusterize(const std::vector<unsigned int>& vec, unsigned int limit)
+{
+    std::vector<std::vector<unsigned int>> clusters;
+    if (vec.empty())
+        return clusters;
+
+    for (auto it = begin(vec);;)
+    {
+        auto const last = std::adjacent_find(it, end(vec),
+            [limit](unsigned int a, unsigned int b) { return b - a > limit; });
+
+        if (last == end(vec))
+        {
+            clusters.emplace_back(it, last);
+            return clusters;
+        }
+
+        auto const gap = next(last);
+        clusters.emplace_back(it, gap);
+        it = gap;
+    }
+
+    // Should never escape the "for" loop without returning but just in case:
+    return clusters;
+}
+
+std::vector<unsigned int> KeyframeSelector::refineFrameSelection(const std::vector<unsigned int>& selectedFrames)
+{
+    std::vector<unsigned int> refinedSelection;
+
+    if (selectedFrames.size() > _internalMaxFrames)
+    {
+        ALICEVISION_LOG_DEBUG("Initial selection contains too many frames");
+    }
+
+    std::vector<std::vector<unsigned int>> clusters = clusterize(selectedFrames, _internalFrameClusterLimit);
+    ALICEVISION_LOG_DEBUG("Finished clusterizing, about to list final clusters (" << clusters.size() << " clusters found)");
+    for (std::size_t i = 0; i < clusters.size(); i++)
+    {
+        ALICEVISION_LOG_DEBUG("Cluster #" << i + 1 << "/" << clusters.size() << ": {" << clusters.at(i).front() << " "
+            << clusters.at(i).back() << "} " << clusters.at(i).size() << " frames");
+    }
+
+    // For each cluster, try to find the sharpest frames while respecting _internalMinFrameSteps
+    for (std::size_t i = 0; i < clusters.size(); i++)
+    {
+        double sharpnessScore;
+        double maxSharpnessScore = 0.0;
+        unsigned int sharpestFrame = 0;
+
+        // TODO: select more than 1 frame per cluster
+        std::size_t maxFrames = (clusters.at(i).size() / _internalMinFrameStep) + 1;
+        ALICEVISION_LOG_DEBUG("Max frames for cluster " << i + 1 << "/" << clusters.size() << ": " << maxFrames);
+        std::vector<double> bestSharpnessScores(maxFrames, 0.0);
+        std::vector<unsigned int> bestFrames(maxFrames, 0);
+
+        for (std::size_t j = 0; j < clusters.at(i).size(); j++)
+        {
+            unsigned int frameId = clusters.at(i).at(j);
+            sharpnessScore = _sharpnessScoresRescaled.at(frameId);
+            if (sharpnessScore > maxSharpnessScore)
+            {
+                maxSharpnessScore = sharpnessScore;
+                sharpestFrame = frameId;
+            }
+        }
+        refinedSelection.push_back(sharpestFrame);
+    }
+
+    return refinedSelection;
 }
 
 bool KeyframeSelector::exportAllScoresToFile(const std::string& folder, bool flowOnBorders) const

@@ -81,8 +81,22 @@ public:
 
     /**
      * @brief Based on the computed scores, select frames that are deemed relevant.
+     * @param[in] refine True if the initial frame selection is to be refined, false otherwise
      */
-    void selectFrames();
+    void selectFrames(bool refine = true);
+
+    /**
+     * @brief Select frames based on their borders' motion scores.
+     * @return A vector containing the ID of the selected frames
+     */
+    std::vector<unsigned int> selectFramesWithMotion();
+
+    /**
+     * @brief Refine the selection based of the borders' motion scores using sharpness scores.
+     * @param[in] selectedFrames A vector containing the ID of the frames selected based on their motion scores
+     * @return A vector containing the ID of the selected frames after refining
+     */
+    std::vector<unsigned int> refineFrameSelection(const std::vector<unsigned int>& selectedFrames);
 
     /**
      * @brief Export all the sharpness and flow scores (full resolution and rescaled) to a CSV file.
@@ -163,6 +177,10 @@ private:
     std::vector<double> _flowScoresOnLeftBorder;
     /// Optical flow scores for each frame's right border
     std::vector<double> _flowScoresOnRightBorder;
+
+    const unsigned int _internalFrameClusterLimit = 24;
+    const unsigned int _internalMinFrameStep = 24;
+    const unsigned int _internalMaxFrames = 2000;
 };
 
 } // namespace keyframe 
