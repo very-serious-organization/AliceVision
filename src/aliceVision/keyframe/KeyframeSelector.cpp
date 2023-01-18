@@ -19,6 +19,7 @@
 #include <iomanip>
 
 #include <opencv2/optflow.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 namespace fs = boost::filesystem;
 
@@ -820,6 +821,23 @@ double estimateFlowByCell(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv
         }
     }
 
+    // OF visualisation
+    ALICEVISION_LOG_DEBUG("Frame to output: " << folder);
+    cv::Mat flowParts[2];
+    cv::split(flow, flowParts);
+    cv::Mat magnitude, angle, magnNorm;
+    cv::cartToPolar(flowParts[0], flowParts[1], magnitude, angle, true);
+    cv::normalize(magnitude, magnNorm, 0.0f, 1.0f, cv::NORM_MINMAX);
+    angle *= ((1.f / 360.f) * (180.f / 255.f));
+
+    cv::Mat _hsv[3], hsv, hsv8, bgr;
+    _hsv[0] = angle;
+    _hsv[1] = cv::Mat::ones(angle.size(), CV_32F);
+    _hsv[2] = magnNorm;
+    cv::merge(_hsv, 3, hsv);
+    hsv.convertTo(hsv8, CV_8U, 255.0);
+    cv::cvtColor(hsv8, bgr, cv::COLOR_HSV2BGR);
+    cv::imwrite(folder, bgr);
     return findMedian(motionByCell);
 }
 
@@ -1086,6 +1104,7 @@ std::vector<unsigned int> KeyframeSelector::refineFrameSelection(const std::vect
         // TODO: select more than 1 frame per cluster
         std::size_t maxFrames = (clusters.at(i).size() / _internalMinFrameStep) + 1;
         ALICEVISION_LOG_DEBUG("Max frames for cluster " << i + 1 << "/" << clusters.size() << ": " << maxFrames);
+
         // for (std::size_t j = 0; j < clusters.at(i).size(); j++)
         // {
         //     unsigned int frameId = clusters.at(i).at(j);
