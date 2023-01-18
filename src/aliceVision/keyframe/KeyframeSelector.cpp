@@ -107,6 +107,31 @@ cv::Mat readImage(dataio::FeedProvider & feed, size_t max_width)
     return cvRescaled;
 }
 
+double findMedian(const std::vector<double>& vec)
+{
+    std::vector<double> vecCopy = vec;
+    if (vecCopy.size() > 0 && vecCopy.size() % 2 == 0)
+    {
+        const auto medianIt1 = vecCopy.begin() + vecCopy.size() / 2 - 1;
+        const auto medianIt2 = vecCopy.begin() + vecCopy.size() / 2;
+        std::nth_element(vecCopy.begin(), medianIt1, vecCopy.end());
+        const auto med1 = *medianIt1;
+        std::nth_element(vecCopy.begin(), medianIt2, vecCopy.end());
+        const auto med2 = *medianIt2;
+        return (med1 + med2) / 2.0;
+    }
+    else if (vecCopy.size() > 0)
+    {
+        const auto medianIt = vecCopy.begin() + vecCopy.size() / 2;
+        std::nth_element(vecCopy.begin(), medianIt, vecCopy.end());
+        return *medianIt;
+    }
+    else
+    {
+        return 0.0;
+    }
+}
+
 double estimateFlow(const std::vector<std::unique_ptr<dataio::FeedProvider>> & feeds, size_t max_width, int previous, int current)
 {
     auto ptrFlow = cv::optflow::createOptFlow_DeepFlow();
@@ -765,7 +790,41 @@ std::vector<double> estimateFlowOnBorders(const cv::Ptr<cv::DenseOpticalFlow>& p
     return norms;
 }
 
-bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, bool rescale, bool flowOnBorders)
+double estimateFlowByCell(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv::Mat& grayscaleImage,
+                        const cv::Mat& previousGrayscaleImage, const std::string& folder, const uint cellSize = 90)
+{
+    cv::Mat flow;
+    ptrFlow->calc(grayscaleImage, previousGrayscaleImage, flow);
+
+    cv::Mat sumflow;
+    cv::integral(flow, sumflow, CV_64F);
+    ALICEVISION_LOG_DEBUG("computed flow for the flow by cell estimation, height of the image: " << sumflow.size().height);
+
+    double norm;
+    std::vector<double> motionByCell;
+
+    for (std::size_t i = 0; i < sumflow.size().height; i += cellSize)
+    {
+        std::size_t maxCellSizeHeight = cellSize;
+        if (std::min(sumflow.size().height, int(i + cellSize)) == sumflow.size().height)
+            maxCellSizeHeight = sumflow.size().height - i;
+        for (std::size_t j = 0; j < sumflow.size().width; j += cellSize)
+        {
+            cv::Point2d tl = sumflow.at<cv::Point2d>(i, j);
+            cv::Point2d tr = sumflow.at<cv::Point2d>(i, j + cellSize - 1);
+            cv::Point2d bl = sumflow.at<cv::Point2d>(i + maxCellSizeHeight - 1, j);
+            cv::Point2d br = sumflow.at<cv::Point2d>(i + maxCellSizeHeight - 1, j + cellSize - 1);
+            cv::Point2d s = br + tl - tr - bl;
+            norm = std::hypot(s.x, s.y) / (maxCellSizeHeight * cellSize);
+            motionByCell.push_back(norm);
+        }
+    }
+
+    return findMedian(motionByCell);
+}
+
+bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, const std::string& outputFolder,
+    bool rescale, bool flowOnBorders, bool flowByCell)
 {
     _sharpnessScores.clear();
     _sharpnessScoresRescaled.clear();
@@ -775,6 +834,7 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
     _flowScoresOnBottomBorder.clear();
     _flowScoresOnLeftBorder.clear();
     _flowScoresOnRightBorder.clear();
+    _flowScoresByCell.clear();
 
     // Create feeds and count minimum number of frames
     std::size_t nbFrames = std::numeric_limits<std::size_t>::max();
@@ -840,6 +900,7 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
         double flowRescaledBottom = -1.;
         double flowRescaledLeft = -1.;
         double flowRescaledRight = -1.;
+        double flowByCellScore = -1.;
 
         for (std::size_t mediaIndex = 0; mediaIndex < feeds.size(); ++mediaIndex)
         {
@@ -886,6 +947,10 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
                     } else {
                         flowRescaled = estimateGlobalFlow(ptrFlow, cvRescaled, previousRescaled);
                     }
+
+                    if (flowByCell) {
+                        flowByCellScore = estimateFlowByCell(ptrFlow, cvRescaled, previousRescaled, outputFolder + "/" + std::to_string((int)currentFrame) + ".png");
+                    }
             }
 
             feed.goToNextFrame();
@@ -904,36 +969,14 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
                 _flowScoresOnLeftBorder.push_back(flowRescaledLeft);
                 _flowScoresOnRightBorder.push_back(flowRescaledRight);
             }
+
+            if (flowByCell)
+                _flowScoresByCell.push_back(flowByCellScore);
         }
         currentFrame++;
         ALICEVISION_LOG_DEBUG("Finished processing frame " << currentFrame << "/" << nbFrames);
     }
     return true;
-}
-
-double findMedian(const std::vector<double>& vec)
-{
-    std::vector<double> vecCopy = vec;
-    if (vecCopy.size() > 0 && vecCopy.size() % 2 == 0)
-    {
-        const auto medianIt1 = vecCopy.begin() + vecCopy.size() / 2 - 1;
-        const auto medianIt2 = vecCopy.begin() + vecCopy.size() / 2;
-        std::nth_element(vecCopy.begin(), medianIt1, vecCopy.end());
-        const auto med1 = *medianIt1;
-        std::nth_element(vecCopy.begin(), medianIt2, vecCopy.end());
-        const auto med2 = *medianIt2;
-        return (med1 + med2) / 2.0;
-    }
-    else if (vecCopy.size() > 0)
-    {
-        const auto medianIt = vecCopy.begin() + vecCopy.size() / 2;
-        std::nth_element(vecCopy.begin(), medianIt, vecCopy.end());
-        return *medianIt;
-    }
-    else
-    {
-        return 0.0;
-    }
 }
 
 void KeyframeSelector::selectFrames(bool refine)
@@ -1130,6 +1173,17 @@ bool KeyframeSelector::exportAllScoresToFile(const std::string& folder, bool flo
 
     scores.push_back(selectedFrames);
 
+    return exportScoresToFile(scores, folder, "scores.csv", header);
+}
+
+bool KeyframeSelector::exportFlowByCellScores(const std::string &folder) const
+{
+    std::vector<std::vector<double>> scores;
+    scores.push_back(_sharpnessScoresRescaled);
+    scores.push_back(_flowScoresRescaled);
+    scores.push_back(_flowScoresByCell);
+
+    std::string header = "FrameNb;SharpnessRescaled;OpticalFlowRescaled;OpticalFlowByCell;\n";
     return exportScoresToFile(scores, folder, "scores.csv", header);
 }
 

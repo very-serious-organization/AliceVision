@@ -74,10 +74,13 @@ public:
     /**
      * @brief Compute the sharpness and flow scores for the input media paths.
      * @param[in] mediaPath For each camera, give the media file name (path)
+     * @param[in] folder The output folder
      * @param[in] rescale True if the score computation is also to be performed on rescaled images
      * @param[in] flowOnBorders True if the optical flow score is computed on the frame's borders
+     * @param[in] flowByCell True if the optical flow score is computed cell by cell in the frame
      */
-    bool computeScores(const std::vector<std::string>& mediaPaths, bool rescale = false, bool flowOnBorders = false);
+    bool computeScores(const std::vector<std::string>& mediaPaths, const std::string& folder, bool rescale = false,
+        bool flowOnBorders = false, bool flowByCell = false);
 
     /**
      * @brief Based on the computed scores, select frames that are deemed relevant.
@@ -104,6 +107,8 @@ public:
      * @param[in] flowOnBorders True if the optical flow scores have been computed on each frame's borders
      */
     bool exportAllScoresToFile(const std::string& outputFolder, bool flowOnBorders) const;
+
+    bool exportFlowByCellScores(const std::string& outputFolder) const;
 
     /**
      * @brief Export score vectors to a CSV file.
@@ -177,6 +182,9 @@ private:
     std::vector<double> _flowScoresOnLeftBorder;
     /// Optical flow scores for each frame's right border
     std::vector<double> _flowScoresOnRightBorder;
+
+    /// Optical flow scores for each frame, computing flow in cells over the whole frame
+    std::vector<double> _flowScoresByCell;
 
     /// Sharpness scores for each frame that has been selected based on its motion score
     const unsigned int _internalFrameClusterLimit = 24;
