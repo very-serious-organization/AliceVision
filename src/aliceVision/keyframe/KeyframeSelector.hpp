@@ -178,6 +178,7 @@ private:
     /// Optical flow scores for each frame's right border
     std::vector<double> _flowScoresOnRightBorder;
 
+    /// Sharpness scores for each frame that has been selected based on its motion score
     const unsigned int _internalFrameClusterLimit = 24;
     const unsigned int _internalMinFrameStep = 24;
     const unsigned int _internalMaxFrames = 2000;

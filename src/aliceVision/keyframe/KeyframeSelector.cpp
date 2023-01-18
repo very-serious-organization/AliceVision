@@ -1043,20 +1043,59 @@ std::vector<unsigned int> KeyframeSelector::refineFrameSelection(const std::vect
         // TODO: select more than 1 frame per cluster
         std::size_t maxFrames = (clusters.at(i).size() / _internalMinFrameStep) + 1;
         ALICEVISION_LOG_DEBUG("Max frames for cluster " << i + 1 << "/" << clusters.size() << ": " << maxFrames);
+        // for (std::size_t j = 0; j < clusters.at(i).size(); j++)
+        // {
+        //     unsigned int frameId = clusters.at(i).at(j);
+        //     sharpnessScore = _sharpnessScoresRescaled.at(frameId);
+        //     if (sharpnessScore > maxSharpnessScore)
+        //     {
+        //         maxSharpnessScore = sharpnessScore;
+        //         sharpestFrame = frameId;
+        //     }
+        // }
+        // refinedSelection.push_back(sharpestFrame);
+
+        // Split every cluster in maxFrames parts, and find the sharpest frame in each subsection
         std::vector<double> bestSharpnessScores(maxFrames, 0.0);
         std::vector<unsigned int> bestFrames(maxFrames, 0);
 
-        for (std::size_t j = 0; j < clusters.at(i).size(); j++)
+        // TODO: improve performance
+        if (maxFrames == 1)
         {
-            unsigned int frameId = clusters.at(i).at(j);
-            sharpnessScore = _sharpnessScoresRescaled.at(frameId);
-            if (sharpnessScore > maxSharpnessScore)
+            for (std::size_t j = 0; j < clusters.at(i).size(); j++)
             {
-                maxSharpnessScore = sharpnessScore;
-                sharpestFrame = frameId;
+                unsigned int frameId = clusters.at(i).at(j);
+                ALICEVISION_LOG_DEBUG("Evaluating sharpness for frame " << frameId << " (cluster " << i + 1 << ")");
+                sharpnessScore = _sharpnessScoresRescaled.at(frameId);
+                if (sharpnessScore > maxSharpnessScore)
+                {
+                    maxSharpnessScore = sharpnessScore;
+                    sharpestFrame = frameId;
+                }
+            }
+            refinedSelection.push_back(sharpestFrame);
+        }
+        else
+        {
+            for (std::size_t j = 0; j < clusters.at(i).size(); j += _internalMinFrameStep)
+            {
+                for (std::size_t k = j;
+                    k < (j + _internalMinFrameStep >= clusters.at(i).size() - 1)
+                    ? clusters.at(i).size() : j + _internalMinFrameStep;
+                    k++)
+                {
+                    unsigned int frameId = clusters.at(i).at(k);
+                    ALICEVISION_LOG_DEBUG("Evaluating sharpness for frame " << frameId << " (cluster " << i + 1 << ")");
+                    sharpnessScore = _sharpnessScoresRescaled.at(frameId);
+                    if (sharpnessScore > maxSharpnessScore)
+                    {
+                        maxSharpnessScore = sharpnessScore;
+                        sharpestFrame = frameId;
+                    }
+                }
+                refinedSelection.push_back(sharpestFrame);
             }
         }
-        refinedSelection.push_back(sharpestFrame);
     }
 
     return refinedSelection;
