@@ -89,6 +89,14 @@ public:
     void selectFrames(bool refine = true);
 
     /**
+     * @brief Select frames from the sequences using the motion and sharpness information.
+     * @param[in] pxDisplacement The minimum of displaced pixels between two keyframes, in percent
+     * @param[in] minFrames The minimum number of selected frames
+     * @param[in] maxFrames The maximum number of selected frames
+     */
+    void selectFrames(float pxDisplacement, unsigned int minFrames = 10, unsigned int maxFrames = 2000);
+
+    /**
      * @brief Select frames based on their borders' motion scores.
      * @return A vector containing the ID of the selected frames
      */
@@ -190,6 +198,9 @@ private:
     const unsigned int _internalFrameClusterLimit = 24;
     const unsigned int _internalMinFrameStep = 24;
     const unsigned int _internalMaxFrames = 2000;
+
+    unsigned int frameWidth = 0;
+    unsigned int frameHeight = 0;
 };
 
 } // namespace keyframe 

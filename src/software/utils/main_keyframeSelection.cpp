@@ -146,7 +146,10 @@ int aliceVision_main(int argc, char** argv)
         ALICEVISION_LOG_INFO("Compute flow by cell: " << flowByCell);
         bool ret = selector.computeScores(mediaPaths, outputFolder, computeRescaled, flowOnBorders, flowByCell);
         // selector.selectFrames(refineSelection);
-        // selector.writeSelection(outputFolder, mediaPaths, brands, models, mmFocals);
+
+        selector.selectFrames(2.0, 10, 2000);
+        selector.writeSelection(outputFolder, mediaPaths, brands, models, mmFocals);
+
         if (exportSharpness && exportFlow) // Only handle the export of all scores for now
         {
             if (flowByCell)

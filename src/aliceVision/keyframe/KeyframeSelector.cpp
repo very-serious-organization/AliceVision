@@ -844,6 +844,10 @@ double estimateFlowByCell(const cv::Ptr<cv::DenseOpticalFlow>& ptrFlow, const cv
 bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths, const std::string& outputFolder,
     bool rescale, bool flowOnBorders, bool flowByCell)
 {
+    // Reset frame size
+    frameWidth = 0;
+    frameHeight = 0;
+
     _sharpnessScores.clear();
     _sharpnessScoresRescaled.clear();
     _flowScores.clear();
@@ -940,6 +944,11 @@ bool KeyframeSelector::computeScores(const std::vector<std::string>& mediaPaths,
             if (rescale)
             {
                 cvRescaled = readImage(feed, 720); // Read image and rescale it
+                if (frameWidth == 0 && frameHeight == 0)
+                {
+                    frameWidth = cvRescaled.size().width;
+                    frameHeight = cvRescaled.size().height;
+                }
                 double sharpnessRescaled = computeSharpness2(cvRescaled, 200);
                 minimalSharpnessRescaled = std::min(minimalSharpnessRescaled, sharpnessRescaled);
             }
@@ -1009,6 +1018,118 @@ void KeyframeSelector::selectFrames(bool refine)
         refinedSelection = unrefinedSelection;
 
     _selected = refinedSelection;
+}
+
+void KeyframeSelector::selectFrames(float pxDisplacement, unsigned int minFrames, unsigned int maxFrames)
+{
+    /**
+     * - Step 1: split the whole sequence into subsequences depending on the accumulated movement and the number of wanted frames
+     * - Step 2: for each subsequence, find the sharpest frame (combination of weights on the center of the subsequence + sharpness)
+     */
+
+    _selected.clear();
+
+    // STEP 1
+    // Split sequence depending on accumulated motion first
+    std::vector<unsigned int> subsetLimits;
+    subsetLimits.push_back(0);
+
+    std::size_t sequenceSize = _flowScoresByCell.size();
+
+    unsigned int step = static_cast<uint>(pxDisplacement * (std::min(frameWidth, frameHeight)) / 100);
+    double acc = 0.0;
+    for (std::size_t i = 1; i < sequenceSize; i++)
+    {
+        acc += _flowScoresByCell.at(i);
+        if (acc >= step)
+        {
+            subsetLimits.push_back(i);
+            acc = 0.0; // reset accumulator
+        }
+    }
+    subsetLimits.push_back(sequenceSize - 1);
+
+    ALICEVISION_LOG_DEBUG("Number of subsequences: " << subsetLimits.size());
+
+    // Then check whether min/maxFrames constraints are respected
+    if (!(subsetLimits.size() - 1 >= minFrames && subsetLimits.size() - 1 <= maxFrames))
+    {
+        std::vector<unsigned int> newLimits;
+        // fix subsequences
+        if (subsetLimits.size() - 1 < minFrames)
+        {
+            // Not enough frames, sample regularly the whole sequence to get minFrames subsequences
+            // TODO: improve (reduce motion step instead of sampling regularly?)
+            newLimits.push_back(0);
+            std::size_t stepSize = (sequenceSize / minFrames) + 1;
+            for (std::size_t i = 1; i < sequenceSize; i += stepSize)
+            {
+                newLimits.push_back(i);
+            }
+            newLimits.push_back(sequenceSize - 1);
+        }
+        else
+        {
+            // Too many frames, increase the motion step between each subsequence
+            while (newLimits.size() - 1 > maxFrames)
+            {
+                newLimits.clear();
+                newLimits.push_back(0);
+                step++;  // The displacement must be 1px bigger than the one used previously
+                acc = 0.0;
+                for (std::size_t i = 1; i < sequenceSize; i++)
+                {
+                    acc += _flowScoresByCell.at(i);
+                    if (acc >= step)
+                    {
+                        newLimits.push_back(i);
+                        acc = 0.0;  // reset accumulator
+                    }
+                }
+                newLimits.push_back(sequenceSize - 1);
+            }
+        }
+
+        subsetLimits.clear();
+        subsetLimits = newLimits;
+    }
+
+    // STEP 2
+    for (std::size_t i = 1; i < subsetLimits.size(); i++)
+    {
+        ALICEVISION_LOG_DEBUG("Interval [" << subsetLimits.at(i - 1) << ", " << subsetLimits.at(i) << "]");
+        double bestSharpness = 0.0;
+        std::size_t bestIndex = 0;
+        std::size_t subsequenceSize = subsetLimits.at(i) - subsetLimits.at(i - 1);
+
+        // Weights for the whole sequence, between 1 and 2
+        std::deque<double> weights;
+        double weightStep = 1.f / (static_cast<double>(subsequenceSize - 1) / 2.f);
+        weights.push_back(2.0);
+        if (subsequenceSize % 2 == 0)
+            weights.push_back(2.0);
+
+        float currentWeight = 2.0;
+        while (weights.size() != subsetLimits.at(i) - subsetLimits.at(i - 1))
+        {
+            currentWeight -= weightStep;
+            weights.push_front(currentWeight);
+            weights.push_back(currentWeight);
+        }
+
+        std::size_t weightPosition = 0;
+        for (std::size_t j = subsetLimits.at(i - 1); j < subsetLimits.at(i); j++)
+        {
+            auto sharpness = _sharpnessScoresRescaled.at(j) * weights.at(weightPosition);
+            weightPosition++;
+            if (sharpness > bestSharpness)
+            {
+                bestIndex = j;
+                bestSharpness = sharpness;
+            }
+        }
+        _selected.push_back(bestIndex);
+    }
 }
 
 std::vector<unsigned int> KeyframeSelector::selectFramesWithMotion()
