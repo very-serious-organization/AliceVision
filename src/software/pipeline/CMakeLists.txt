@@ -256,6 +256,7 @@ if(ALICEVISION_BUILD_SFM)
           Boost::program_options
           Boost::filesystem
           Boost::boost
+          Boost::json
   )
 
   # Calibrate a rig
