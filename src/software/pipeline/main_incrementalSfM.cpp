@@ -18,7 +18,7 @@
 #include <aliceVision/config.hpp>
 #include <aliceVision/track/TracksBuilder.hpp>
 #include <aliceVision/sfm/BundleAdjustment.hpp>
-
+#include <aliceVision/system/ProgressDisplay.hpp>
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
 
