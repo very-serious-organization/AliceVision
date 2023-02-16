@@ -215,6 +215,17 @@ void loadLandmark(IndexT& landmarkId, sfmData::Landmark& landmark, bpt::ptree& l
  */
 bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag);
 
+
+/**
+ * @brief Save an SfMData in a boost property tree.
+ * @param[in] sfmData The input SfMData
+ * @param[in] tree The property tree
+ * @param[in] partFlag The ESfMData save flag
+ * @return true if completed
+ */
+bool dumpJSON(const sfmData::SfMData& sfmData, bpt::ptree& outputTree, ESfMData partFlag);
+
+
 /**
  * @brief Load a JSON SfMData file.
  * @param[out] sfmData The output SfMData
@@ -226,6 +237,19 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
  * @return true if completed
  */
 bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag, bool incompleteViews = false,
+              EViewIdMethod viewIdMethod = EViewIdMethod::METADATA, const std::string& viewIdRegex = "");
+
+/**
+ * @brief Load a SfMData from a bpt Tree.
+ * @param[out] sfmData The output SfMData
+ * @param[in] inputTree The input tree
+ * @param[in] partFlag The ESfMData load flag
+ * @param[in] incompleteViews If true, try to load incomplete views
+ * @param[in] viewIdMethod ViewId generation method to use if incompleteViews is true
+ * @param[in] viewIdRegex Optional regex used when viewIdMethod is FILENAME
+ * @return true if completed
+ */
+bool parseJSON(sfmData::SfMData& sfmData, bpt::ptree & inputTree, ESfMData partFlag, bool incompleteViews = false,
               EViewIdMethod viewIdMethod = EViewIdMethod::METADATA, const std::string& viewIdRegex = "");
 
 } // namespace sfmDataIO

@@ -389,8 +389,7 @@ void loadLandmark(IndexT& landmarkId, sfmData::Landmark& landmark, bpt::ptree& l
   }
 }
 
-
-bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag)
+bool dumpJSON(const sfmData::SfMData& sfmData, bpt::ptree& outputTree, ESfMData partFlag)
 {
   const Vec3i version = {ALICEVISION_SFMDATAIO_VERSION_MAJOR, ALICEVISION_SFMDATAIO_VERSION_MINOR, ALICEVISION_SFMDATAIO_VERSION_REVISION};
 
@@ -403,11 +402,8 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
   const bool saveFeatures = (partFlag & OBSERVATIONS_WITH_FEATURES) == OBSERVATIONS_WITH_FEATURES;
   const bool saveObservations = saveFeatures || ((partFlag & OBSERVATIONS) == OBSERVATIONS);
 
-  // main tree
-  bpt::ptree fileTree;
-
   // file version
-  saveMatrix("version", version, fileTree);
+  saveMatrix("version", version, outputTree);
 
   // folders
   if(!sfmData.getRelativeFeaturesFolders().empty())
@@ -421,7 +417,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
       featureFoldersTree.push_back(std::make_pair("", featureFolderTree));
     }
 
-    fileTree.add_child("featuresFolders", featureFoldersTree);
+    outputTree.add_child("featuresFolders", featureFoldersTree);
   }
 
   if(!sfmData.getRelativeMatchesFolders().empty())
@@ -435,7 +431,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
       matchingFoldersTree.push_back(std::make_pair("", matchingFolderTree));
     }
 
-    fileTree.add_child("matchesFolders", matchingFoldersTree);
+    outputTree.add_child("matchesFolders", matchingFoldersTree);
   }
 
   // views
@@ -446,7 +442,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
     for(const auto& viewPair : sfmData.getViews())
       saveView("", *(viewPair.second), viewsTree);
 
-    fileTree.add_child("views", viewsTree);
+    outputTree.add_child("views", viewsTree);
   }
 
   // intrinsics
@@ -457,7 +453,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
     for(const auto& intrinsicPair : sfmData.getIntrinsics())
       saveIntrinsic("", intrinsicPair.first, intrinsicPair.second, intrinsicsTree);
 
-    fileTree.add_child("intrinsics", intrinsicsTree);
+    outputTree.add_child("intrinsics", intrinsicsTree);
   }
 
   //extrinsics
@@ -477,7 +473,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
         posesTree.push_back(std::make_pair("", poseTree));
       }
 
-      fileTree.add_child("poses", posesTree);
+      outputTree.add_child("poses", posesTree);
     }
 
     // rigs
@@ -488,7 +484,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
       for(const auto& rigPair : sfmData.getRigs())
         saveRig("", rigPair.first, rigPair.second, rigsTree);
 
-      fileTree.add_child("rigs", rigsTree);
+      outputTree.add_child("rigs", rigsTree);
     }
   }
 
@@ -500,7 +496,7 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
     for(const auto& structurePair : sfmData.getLandmarks())
       saveLandmark("", structurePair.first, structurePair.second, structureTree, saveObservations, saveFeatures);
 
-    fileTree.add_child("structure", structureTree);
+    outputTree.add_child("structure", structureTree);
   }
 
   // control points
@@ -511,18 +507,29 @@ bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfM
     for(const auto& controlPointPair : sfmData.getControlPoints())
       saveLandmark("", controlPointPair.first, controlPointPair.second, controlPointTree);
 
-    fileTree.add_child("controlPoints", controlPointTree);
+    outputTree.add_child("controlPoints", controlPointTree);
+  }
+
+  return true;
+}
+
+bool saveJSON(const sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag)
+{
+  
+  bpt::ptree fileTree;
+
+  if (!dumpJSON(sfmData, fileTree, partFlag))
+  {
+    return false;
   }
 
   // write the json file with the tree
-
   bpt::write_json(filename, fileTree);
 
   return true;
 }
 
-bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag, bool incompleteViews,
-              EViewIdMethod viewIdMethod, const std::string& viewIdRegex)
+bool parseJSON(sfmData::SfMData& sfmData, bpt::ptree & inputTree, ESfMData partFlag, bool incompleteViews, EViewIdMethod viewIdMethod, const std::string& viewIdRegex)
 {
   Version version;
 
@@ -535,34 +542,28 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   const bool loadFeatures = (partFlag & OBSERVATIONS_WITH_FEATURES) == OBSERVATIONS_WITH_FEATURES;
   const bool loadObservations = loadFeatures || ((partFlag & OBSERVATIONS) == OBSERVATIONS);
 
-  // main tree
-  bpt::ptree fileTree;
-
-  // read the json file and initialize the tree
-  bpt::read_json(filename, fileTree);
-
   // version
   {
     Vec3i v;
-    loadMatrix("version", v, fileTree);
+    loadMatrix("version", v, inputTree);
     version = v;
   }
 
   // folders
-  if(fileTree.count("featuresFolders"))
-    for(bpt::ptree::value_type& featureFolderNode : fileTree.get_child("featuresFolders"))
+  if(inputTree.count("featuresFolders"))
+    for(bpt::ptree::value_type& featureFolderNode : inputTree.get_child("featuresFolders"))
       sfmData.addFeaturesFolder(featureFolderNode.second.get_value<std::string>());
 
-  if(fileTree.count("matchesFolders"))
-    for(bpt::ptree::value_type& matchingFolderNode : fileTree.get_child("matchesFolders"))
+  if(inputTree.count("matchesFolders"))
+    for(bpt::ptree::value_type& matchingFolderNode : inputTree.get_child("matchesFolders"))
       sfmData.addMatchesFolder(matchingFolderNode.second.get_value<std::string>());
 
   // intrinsics
-  if(loadIntrinsics && fileTree.count("intrinsics"))
+  if(loadIntrinsics && inputTree.count("intrinsics"))
   {
     sfmData::Intrinsics& intrinsics = sfmData.getIntrinsics();
 
-    for(bpt::ptree::value_type &intrinsicNode : fileTree.get_child("intrinsics"))
+    for(bpt::ptree::value_type &intrinsicNode : inputTree.get_child("intrinsics"))
     {
       IndexT intrinsicId;
       std::shared_ptr<camera::IntrinsicBase> intrinsic;
@@ -574,17 +575,17 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   }
 
   // views
-  if(loadViews && fileTree.count("views"))
+  if(loadViews && inputTree.count("views"))
   {
     sfmData::Views& views = sfmData.getViews();
 
     if(incompleteViews)
     {
       // store incomplete views in a vector
-      std::vector<sfmData::View> incompleteViews(fileTree.get_child("views").size());
+      std::vector<sfmData::View> incompleteViews(inputTree.get_child("views").size());
 
       int viewIndex = 0;
-      for(bpt::ptree::value_type &viewNode : fileTree.get_child("views"))
+      for(bpt::ptree::value_type &viewNode : inputTree.get_child("views"))
       {
         loadView(incompleteViews.at(viewIndex), viewNode.second);
         ++viewIndex;
@@ -623,7 +624,7 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
     else
     {
       // store directly in the SfMData views map
-      for(bpt::ptree::value_type &viewNode : fileTree.get_child("views"))
+      for(bpt::ptree::value_type &viewNode : inputTree.get_child("views"))
       {
         sfmData::View view;
         loadView(view, viewNode.second);
@@ -636,11 +637,11 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   if(loadExtrinsics)
   {
     // poses
-    if(fileTree.count("poses"))
+    if(inputTree.count("poses"))
     {
       sfmData::Poses& poses = sfmData.getPoses();
 
-      for(bpt::ptree::value_type &poseNode : fileTree.get_child("poses"))
+      for(bpt::ptree::value_type &poseNode : inputTree.get_child("poses"))
       {
         bpt::ptree& poseTree = poseNode.second;
         sfmData::CameraPose pose;
@@ -652,11 +653,11 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
     }
 
     // rigs
-    if(fileTree.count("rigs"))
+    if(inputTree.count("rigs"))
     {
       sfmData::Rigs& rigs = sfmData.getRigs();
 
-      for(bpt::ptree::value_type &rigNode : fileTree.get_child("rigs"))
+      for(bpt::ptree::value_type &rigNode : inputTree.get_child("rigs"))
       {
         IndexT rigId;
         sfmData::Rig rig;
@@ -669,11 +670,11 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   }
 
   // structure
-  if(loadStructure && fileTree.count("structure"))
+  if(loadStructure && inputTree.count("structure"))
   {
     sfmData::Landmarks& structure = sfmData.getLandmarks();
 
-    for(bpt::ptree::value_type &landmarkNode : fileTree.get_child("structure"))
+    for(bpt::ptree::value_type &landmarkNode : inputTree.get_child("structure"))
     {
       IndexT landmarkId;
       sfmData::Landmark landmark;
@@ -685,11 +686,11 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   }
 
   // control points
-  if(loadControlPoints && fileTree.count("controlPoints"))
+  if(loadControlPoints && inputTree.count("controlPoints"))
   {
     sfmData::Landmarks& controlPoints = sfmData.getControlPoints();
 
-    for(bpt::ptree::value_type &landmarkNode : fileTree.get_child("controlPoints"))
+    for(bpt::ptree::value_type &landmarkNode : inputTree.get_child("controlPoints"))
     {
       IndexT landmarkId;
       sfmData::Landmark landmark;
@@ -701,6 +702,18 @@ bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData p
   }
 
   return true;
+}
+
+bool loadJSON(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag, bool incompleteViews,
+              EViewIdMethod viewIdMethod, const std::string& viewIdRegex)
+{
+  // main tree
+  bpt::ptree fileTree;
+
+  // read the json file and initialize the tree
+  bpt::read_json(filename, fileTree);
+
+  return parseJSON(sfmData, fileTree, partFlag, incompleteViews, viewIdMethod, viewIdRegex);
 }
 
 } // namespace sfmDataIO
