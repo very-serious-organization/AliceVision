@@ -121,66 +121,16 @@ bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const fea
         return false;
     }
 
+    if (!bundle.computePoseUncertainty(*resultsfmData, sfm::BundleAdjustment::REFINE_ROTATION | sfm::BundleAdjustment::REFINE_TRANSLATION | sfm::BundleAdjustment::REFINE_STRUCTURE, firstView->getPoseId()))
+    {
+        return false;
+    }
+
     return true;
 }
 
-void build(std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>> &  builtSfmDatas, const sfmData::SfMData & sfmData, std::mt19937 & randomNumberGenerator, feature::FeaturesPerView featuresPerView, const matching::PairwiseMatches & pairwiseMatches, IndexT start, IndexT end)
+bool build(std::shared_ptr<sfmData::SfMData> & pairSfmData, const sfmData::SfMData & sfmData, std::mt19937 & randomNumberGenerator, feature::FeaturesPerView featuresPerView, const matching::MatchesPerDescType & pairViewMatches, IndexT firstViewId, IndexT secondViewId)
 {
-    Pair matchpair;
-    matchpair.first = start;
-    matchpair.second = end;
-
-    bool reversed = false;
-    //Try both combinations
-    if (pairwiseMatches.find(matchpair) == pairwiseMatches.end())
-    {
-        matchpair.first = end;
-        matchpair.second = start;
-        reversed = true;
-
-        if (pairwiseMatches.find(matchpair) == pairwiseMatches.end())
-        {
-            return;
-        }
-    }
-
-    matching::MatchesPerDescType pairViewMatches = pairwiseMatches.at(matchpair);
-
-    if (reversed)
-    {
-        for (auto & matches : pairViewMatches)
-        {
-            for (auto & match : matches.second)
-            {
-                std::swap(match._i, match._j);
-            }
-        }
-    }
-
-    Pair outpair = std::make_pair(start, end);
-
-    
-    bool found = false;
-    #pragma omp critical
-    {
-        if (builtSfmDatas.find(outpair) != builtSfmDatas.end())
-        {
-            found = true;
-        }
-        else
-        {
-            builtSfmDatas[outpair] = nullptr;
-        }
-    }
-
-    if (found)
-    {
-        return;
-    }
-
-    IndexT firstViewId = start;
-    IndexT secondViewId = end;
-
     std::shared_ptr<sfmData::View> firstView = sfmData.getViews().at(firstViewId);
     std::shared_ptr<sfmData::View> secondView = sfmData.getViews().at(secondViewId);
     std::shared_ptr<camera::IntrinsicBase> firstIntrinsic = sfmData.getIntrinsicsharedPtr(firstView->getIntrinsicId());
@@ -188,7 +138,7 @@ void build(std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>
     if (!firstIntrinsic || !secondIntrinsic)
     {
         ALICEVISION_LOG_ERROR("One of the view has no intrinsics defined");
-        return;
+        return false;
     }
 
     std::shared_ptr<camera::Pinhole> firstPinhole = std::dynamic_pointer_cast<camera::Pinhole>(firstIntrinsic);
@@ -196,7 +146,7 @@ void build(std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>
     if (!firstPinhole || !secondPinhole)
     {
         ALICEVISION_LOG_ERROR("At least one of the view is not captured by a pinhole camera");
-        return;
+        return false;
     }
 
     size_t totalSize = 0;
@@ -234,19 +184,16 @@ void build(std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>
     bool res = sfm::robustRelativePose(firstPinhole->K(), secondPinhole->K(), referencePoints, matchesPoints, randomNumberGenerator, poseInfo, std::make_pair(firstPinhole->w(), firstPinhole->h()), std::make_pair(secondPinhole->w(), secondPinhole->h()));
     if (!res)
     {
-        return;
+        return false;
     }
 
     std::shared_ptr<sfmData::SfMData> localSfmData = std::make_shared<sfmData::SfMData>();
     if (!computeMiniSFm(localSfmData, featuresPerView, pairViewMatches, poseInfo.relativePose, firstView, secondView, firstPinhole, secondPinhole, false))
     {
-        return;
+        return false;
     }
 
-    #pragma omp critical
-    {
-        builtSfmDatas[outpair] = localSfmData;
-    }
+    pairSfmData = localSfmData;
 }  
 
 void buildTriplet(const std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>> &  builtSfmDatas, std::mt19937& randomNumberGenerator, IndexT start, IndexT middle, IndexT end)
@@ -427,8 +374,23 @@ int aliceVision_main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
+//#pragma omp parallel for
+    for (int id = 0; id < pairwiseMatches.size(); id++)
+    {
+        auto itmatch = pairwiseMatches.begin();
+        std::advance(itmatch, id);
 
-    typedef boost::property<boost::vertex_name_t, IndexT> vertex_property_t;
+        
+        std::shared_ptr<sfmData::SfMData> pairSfmData;
+        if (!build(pairSfmData, sfmData, randomNumberGenerator, featuresPerView, itmatch->second, itmatch->first.first, itmatch->first.second))
+        {
+            continue;
+        }
+
+
+    }
+
+    /*typedef boost::property<boost::vertex_name_t, IndexT> vertex_property_t;
     typedef boost::property<boost::edge_weight_t, double> edge_property_t;
     typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, vertex_property_t, edge_property_t> graph_t;
     typedef graph_t::vertex_descriptor vertex_t;
@@ -486,7 +448,7 @@ int aliceVision_main(int argc, char** argv)
 
             buildTriplet(builtSfmDatas, randomNumberGenerator, vertName[start], vertName[end], vertName[other_end]);
         }
-    }
+    }*/
 
     return EXIT_SUCCESS;
 }
