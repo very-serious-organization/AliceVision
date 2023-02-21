@@ -190,6 +190,62 @@ class IntrinsicsManifold : public utils::CeresManifold {
   bool _lockDistortion;
 };
 
+class MeanPointsCostFunction : public ceres::CostFunction {
+public:
+    MeanPointsCostFunction(size_t count, const Vec3 & sum) : _count(count), _sum(sum)
+    {
+        set_num_residuals(3);
+
+        for (int id = 0; id < count; id++)
+        {
+            mutable_parameter_block_sizes()->push_back(3);
+        }
+    }
+
+    bool Evaluate(double const* const* parameters, double* residuals, double** jacobians) const override
+    {
+        Vec3 est;
+        est.fill(0);
+
+        for (int id = 0; id < _count; id++)
+        {
+            const double* parameter_point = parameters[id];
+            Vec3 pt;
+            pt.x() = parameter_point[0];
+            pt.y() = parameter_point[1];
+            pt.z() = parameter_point[2];
+
+            est += pt;
+        }
+
+        residuals[0] = est.x() - _sum.x();
+        residuals[1] = est.y() - _sum.y();
+        residuals[2] = est.z() - _sum.z();
+
+        if (jacobians == nullptr) {
+            return true;
+        }
+
+        for (int id = 0; id < _count; id++)
+        {
+            double* jacobian = jacobians[id];
+            if (jacobian == nullptr)
+            {
+                continue;
+            }
+
+            Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>> J(jacobians[id]);
+            J.setIdentity();
+        }
+
+        return true;
+    }
+
+private:
+    size_t _count;
+    Vec3 _sum;
+};
+
 /**
  * @brief Create the appropriate cost functor according the provided input camera intrinsic model
  * @param[in] intrinsicPtr The intrinsic pointer
@@ -559,6 +615,7 @@ void BundleAdjustmentCeres::addExtrinsicsToProblem(const sfmData::SfMData& sfmDa
 
     const bool isConstant = (getPoseState(poseId) == EParameterState::CONSTANT);
 
+    std::cout << "addpose" << isConstant << std::endl;
     addPose(pose, isConstant, _posesBlocks[poseId]);
   }
 
@@ -1060,6 +1117,74 @@ bool BundleAdjustmentCeres::adjust(sfmData::SfMData& sfmData, ERefineOptions ref
   //store distance histogram for local strategy
   if(useLocalStrategy())
     _statistics.nbCamerasPerDistance = _localGraph->getDistancesHistogram();
+
+  return true;
+}
+
+bool BundleAdjustmentCeres::computePoseUncertainty(sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId)
+{
+    std::cout << "o" << std::endl;
+  if (_posesBlocks.find(poseId) == _posesBlocks.end())
+  {
+    return false;
+  }
+
+
+
+  // create problem
+  ceres::Problem::Options problemOptions;
+  problemOptions.loss_function_ownership = ceres::DO_NOT_TAKE_OWNERSHIP;
+  ceres::Problem problem(problemOptions);
+  createProblem(sfmData, refineOptions, problem);
+
+  Vec3 sum;
+  size_t count = 0;
+  std::vector<double*> landmarksPtrs;
+  for (auto& landmarksBlockPair : _landmarksBlocks)
+  {
+      const IndexT landmarkId = landmarksBlockPair.first;
+      sfmData::Landmark& landmark = sfmData.getLandmarks().at(landmarkId);
+
+      if (getLandmarkState(landmarkId) != EParameterState::REFINED) {
+          continue;
+      }
+
+      sum += landmark.X;
+      count++;
+
+      landmarksPtrs.push_back(landmarksBlockPair.second.data());
+
+      if (count > 50) break;
+  }
+
+  problem.AddResidualBlock(new MeanPointsCostFunction(landmarksPtrs.size(), sum), nullptr, landmarksPtrs);
+
+  ceres::Covariance::Options covoptions;
+  ceres::Covariance cov(covoptions);
+
+  std::vector<std::pair<const double*, const double*>> blocks;
+
+  for (auto & it : _posesBlocks)
+  {
+      if (it.first == poseId)
+      {
+          blocks.push_back(std::make_pair(it.second.data(), it.second.data()));
+          problem.SetParameterBlockVariable(it.second.data());
+      }
+      else
+      {
+          problem.SetParameterBlockConstant(it.second.data());
+      }
+  }
+  
+
+  if (!cov.Compute(blocks, &problem))
+  {
+      return false;
+  }
+
+  /*double data[16 * 16];
+      if (cov.GetCovarianceBlockInTangentSpace(it.second.data(), it.second.data(), data))*/
 
   return true;
 }

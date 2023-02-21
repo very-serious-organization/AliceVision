@@ -139,6 +139,8 @@ public:
    */
   bool adjust(sfmData::SfMData& sfmData, ERefineOptions refineOptions = REFINE_ALL);
 
+  bool computePoseUncertainty(sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId);
+
   /**
    * @brief Ajust parameters according to the local reconstruction graph in order do perfomr an optimezed bundle adjustmentor
    * @param[in] localGraph The Local bundle adjustment graph pointer or nullptr (will refine everything)
@@ -235,6 +237,8 @@ private:
    * @param[in] refineOptions The chosen refine flag
    */
   void updateFromSolution(sfmData::SfMData& sfmData, ERefineOptions refineOptions) const;
+
+  
 
   /**
    * @brief Return the BundleAdjustment::EParameterState for a specific pose.
