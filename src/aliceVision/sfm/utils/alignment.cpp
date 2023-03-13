@@ -660,6 +660,7 @@ void computeNewCoordinateSystemFromCameras(const sfmData::SfMData& sfmData,
   }
 
   //Plane fitting of the centered point cloud
+  //See https://www.ltu.se/cms_fs/1.51590!/svd-fitting.pdf
   Eigen::JacobiSVD<Mat> svd(vCamCenter.transpose(), Eigen::ComputeFullV);
   Eigen::Vector3d n = svd.matrixV().col(2);
 
@@ -671,9 +672,7 @@ void computeNewCoordinateSystemFromCameras(const sfmData::SfMData& sfmData,
   
   //We want ideal normal to be the Y axis
   out_R = Matrix3d(Quaterniond().setFromTwoVectors(n,  Eigen::Vector3d::UnitY()));
-
   out_S = 1.0 / sqrt(stddev);
-
   out_t = - out_S * out_R * meanCameraCenter;
 }
 
