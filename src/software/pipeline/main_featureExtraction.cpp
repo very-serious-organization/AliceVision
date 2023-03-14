@@ -56,6 +56,7 @@ int aliceVision_main(int argc, char **argv)
   int rangeSize = 1;
   int maxThreads = 0;
   bool forceCpuExtraction = false;
+  image::EImageColorSpace workingColorSpace = image::EImageColorSpace::SRGB;
 
   po::options_description requiredParams("Required parameters");
   requiredParams.add_options()
@@ -81,6 +82,8 @@ int aliceVision_main(int argc, char **argv)
       feature::EFeatureConstrastFiltering_information().c_str())
     ("relativePeakThreshold", po::value<float>(&featDescConfig.relativePeakThreshold)->default_value(featDescConfig.relativePeakThreshold),
        "Peak Threshold relative to median of gradiants.")
+    ("workingColorSpace", po::value<image::EImageColorSpace>(&workingColorSpace)->default_value(workingColorSpace),
+       ("Working color space: " + image::EImageColorSpace_informations()).c_str())
     ("forceCpuExtraction", po::value<bool>(&forceCpuExtraction)->default_value(forceCpuExtraction),
       "Use only CPU feature extraction methods.")
     ("masksFolder", po::value<std::string>(&masksFolder),
@@ -177,7 +180,7 @@ int aliceVision_main(int argc, char **argv)
   {
     system::Timer timer;
 
-    extractor.process(hwc);
+    extractor.process(hwc, workingColorSpace);
 
     ALICEVISION_LOG_INFO("Task done in (s): " + std::to_string(timer.elapsed()));
   }
