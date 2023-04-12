@@ -103,6 +103,22 @@ if(ALICEVISION_BUILD_SFM)
           Boost::filesystem
   )
 
+  # Feature matching
+  # - putative matches and geometric filtered matches
+  alicevision_add_software(aliceVision_sequentialFeatureMatching
+    SOURCE main_sequentialFeatureMatching.cpp
+    FOLDER ${FOLDER_SOFTWARE_PIPELINE}
+    LINKS aliceVision_system
+          aliceVision_feature
+          aliceVision_multiview
+          aliceVision_matchingImageCollection
+          aliceVision_sfm
+          aliceVision_sfmData
+          aliceVision_sfmDataIO
+          Boost::program_options
+          Boost::filesystem
+  )
+
   # Incremental / Sequential SfM
   alicevision_add_software(aliceVision_incrementalSfM
     SOURCE main_incrementalSfM.cpp
