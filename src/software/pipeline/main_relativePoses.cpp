@@ -40,6 +40,37 @@
 using namespace aliceVision;
 namespace po = boost::program_options;
 
+bool nullifyPose(sfmData::SfMData & sfmdata, IndexT poseId)
+{
+    auto & poses = sfmdata.getPoses();
+
+    if (poses.find(poseId) == poses.end())
+    {
+        return false;
+    }
+
+    auto & p = poses[poseId];
+    Mat4 cref_T_o = p.getTransform().getHomogeneous();
+    Mat4 o_T_cref = cref_T_o.inverse();
+
+
+    for (auto & p : poses)
+    {
+        Mat4 cother_T_o = p.second.getTransform().getHomogeneous();
+        Mat4 cother_T_cref = cother_T_o * o_T_cref;
+        geometry::Pose3 pose(cother_T_cref.block<3, 4>(0, 0));
+        p.second.setTransform(pose);
+    }
+
+    for (auto& l : sfmdata.getLandmarks())
+    {
+        Vec4 hX = cref_T_o * l.second.X.homogeneous();
+        l.second.X = hX.head(3);
+    }
+
+    return true;
+}
+
 bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const feature::FeaturesPerView & featuresPerView, const matching::MatchesPerDescType & viewMatches, const geometry::Pose3 & pose, std::shared_ptr<sfmData::View> firstView, std::shared_ptr<sfmData::View> secondView, std::shared_ptr<camera::Pinhole> firstPinhole, std::shared_ptr<camera::Pinhole> secondPinhole, bool inverseMatches)
 {
     // Init structure
@@ -54,8 +85,6 @@ bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const fea
 
     resultsfmData->setPose(*firstView, sfmData::CameraPose(geometry::Pose3()));
     resultsfmData->setPose(*secondView, sfmData::CameraPose(pose));
-
-    //resultsfmData->getPoses()[firstView->getPoseId()].lock();
 
     sfmData::Landmarks & landmarks = resultsfmData->structure;
 
@@ -90,8 +119,13 @@ bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const fea
                 continue;
             }
 
-            Vec3 proj = (Psecond * X.homogeneous());
-
+           
+            auto v1 = (X - pose.center()).normalized();
+            auto v2 = (X).normalized();
+            if (std::abs(acos(v1.dot(v2))) < 0.01)
+            {
+                continue;
+            }
 
             sfmData::Observations observations;
             observations[firstView->getViewId()] = sfmData::Observation(x1, firstMatchIndex, firstFeature.scale());
@@ -105,6 +139,11 @@ bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const fea
 
             count++;
         }
+    }
+
+    if (count < 10)
+    {
+        return false;
     }
 
     
@@ -121,10 +160,16 @@ bool computeMiniSFm(std::shared_ptr<sfmData::SfMData> & resultsfmData, const fea
         return false;
     }
 
-    if (!bundle.computePoseUncertainty(*resultsfmData, sfm::BundleAdjustment::REFINE_ROTATION | sfm::BundleAdjustment::REFINE_TRANSLATION | sfm::BundleAdjustment::REFINE_STRUCTURE, firstView->getPoseId()))
+    
+   /*if (!nullifyPose(*resultsfmData, firstView->getPoseId()))
     {
         return false;
     }
+
+    if (!bundle.computePoseUncertainty(C, *resultsfmData, sfm::BundleAdjustment::REFINE_ROTATION | sfm::BundleAdjustment::REFINE_TRANSLATION | sfm::BundleAdjustment::REFINE_STRUCTURE, secondView->getPoseId()))
+    {
+        return false;
+    }*/
 
     return true;
 }
@@ -194,6 +239,7 @@ bool build(std::shared_ptr<sfmData::SfMData> & pairSfmData, const sfmData::SfMDa
     }
 
     pairSfmData = localSfmData;
+    return true;
 }  
 
 void buildTriplet(const std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>> &  builtSfmDatas, std::mt19937& randomNumberGenerator, IndexT start, IndexT middle, IndexT end)
@@ -374,46 +420,156 @@ int aliceVision_main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-//#pragma omp parallel for
+    std::map<Pair, std::shared_ptr<sfmData::SfMData>> sfmPerPairs;
+
+#pragma omp parallel for
     for (int id = 0; id < pairwiseMatches.size(); id++)
     {
         auto itmatch = pairwiseMatches.begin();
         std::advance(itmatch, id);
-
-        
+                
         std::shared_ptr<sfmData::SfMData> pairSfmData;
         if (!build(pairSfmData, sfmData, randomNumberGenerator, featuresPerView, itmatch->second, itmatch->first.first, itmatch->first.second))
         {
             continue;
         }
 
-
+        #pragma omp critical
+        {
+            sfmPerPairs[itmatch->first] = pairSfmData;
+        }
     }
 
-    /*typedef boost::property<boost::vertex_name_t, IndexT> vertex_property_t;
-    typedef boost::property<boost::edge_weight_t, double> edge_property_t;
-    typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::directedS, vertex_property_t, edge_property_t> graph_t;
+    struct VertexProperties
+    {
+        IndexT viewId;
+    };
+
+    struct EdgeProperties {
+        double val;
+    };
+
+    typedef boost::property<boost::vertex_name_t, IndexT> vertex_property_t;
+    typedef boost::adjacency_list<boost::vecS, boost::vecS, boost::bidirectionalS, VertexProperties, EdgeProperties> graph_t;
     typedef graph_t::vertex_descriptor vertex_t;
     typedef graph_t::edge_descriptor edge_t;
     typedef boost::graph_traits<graph_t>::edge_iterator edge_iter;
 
     graph_t g; 
-    boost::property_map<graph_t, boost::vertex_name_t>::type vertName = boost::get(boost::vertex_name, g);
+   //boost::property_map<graph_t, boost::vertex_name_t>::type vertName = boost::get(boost::vertex_name, g);
 
+
+    //Add all views in the graph as vertices
     std::map<IndexT, vertex_t> nodes;
     for (const auto& pv : sfmData.getViews())
     {
-        nodes[pv.first] = boost::add_vertex(pv.first, g);
+        nodes[pv.first] = boost::add_vertex({ pv.first }, g);
     }
 
-    for (const auto& match : pairwiseMatches)
+    
+    for (const auto& pair : sfmPerPairs)
     {
-        const vertex_t & v1 = nodes[match.first.first];
-        const vertex_t & v2 = nodes[match.first.second];
-        boost::add_edge(v1, v2, 0.0, g);
-        boost::add_edge(v2, v1, 0.1, g);
+        const vertex_t & v1 = nodes[pair.first.first];
+        const vertex_t & v2 = nodes[pair.first.second];
+
+        boost::add_edge(v1, v2, {0.0}, g);
+        boost::add_edge(v2, v1, {0.0}, g);
     }
 
+    //Build triplets list
+    std::set<std::tuple<IndexT, IndexT, IndexT>> triplets;
+    for (const auto& pair : sfmPerPairs)
+    {
+        const vertex_t& v1 = nodes[pair.first.first];
+        const vertex_t& v2 = nodes[pair.first.second];
+
+        IndexT id1 = g[v1].viewId;
+        IndexT id2 = g[v2].viewId;
+
+        auto pair_out = boost::out_edges(v2, g);
+        for (auto it = pair_out.first; it != pair_out.second; it++)
+        {
+            vertex_t v3 = boost::target(*it, g);           
+            IndexT id3 = g[v3].viewId;
+            if (id3 == id1)
+            {
+                continue;
+            }
+
+            if (id3 > id1)
+            {
+                triplets.insert({ id1, id2, id3 });
+            }
+            else
+            {
+                triplets.insert({ id3, id2, id1 });
+            }
+        }
+
+        pair_out = boost::out_edges(v1, g);
+        for (auto it = pair_out.first; it != pair_out.second; it++)
+        {
+            vertex_t v3 = boost::target(*it, g);
+            IndexT id3 = g[v3].viewId;
+            if (id3 == id2)
+            {
+                continue;
+            }
+
+            if (id3 > id2)
+            {
+                triplets.insert({ id2, id1, id3 });
+            }
+            else
+            {
+                triplets.insert({ id3, id1, id2 });
+            }
+        }
+    }
+
+    std::cout << "ok" << std::endl;
+
+    for (const auto & triplet : triplets)
+    {
+        Index v1, v2, v3;
+        std::tie(v1, v2, v3) = triplet;
+
+        Pair p;
+        sfmData::SfMData sfmdata_ref;
+        sfmData::SfMData sfmdata_other;
+
+        p.first = v1;
+        p.second = v2;
+        if (sfmPerPairs.find(p) == sfmPerPairs.end())
+        {
+            p.first = v2;
+            p.second = v1;
+
+            if (sfmPerPairs.find(p) == sfmPerPairs.end())
+            {
+                continue;
+            }
+        }
+
+        sfmdata_ref = *sfmPerPairs[p];
+
+        p.first = v2;
+        p.second = v3;
+        if (sfmPerPairs.find(p) == sfmPerPairs.end())
+        {
+            p.first = v3;
+            p.second = v2;
+
+            if (sfmPerPairs.find(p) == sfmPerPairs.end())
+            {
+                continue;
+            }
+        }
+
+        sfmdata_other = *sfmPerPairs[p];
+    }
+
+/*
     std::map<std::pair<IndexT, IndexT>, std::shared_ptr<sfmData::SfMData>> builtSfmDatas;
 
     auto edges = boost::edges(g);

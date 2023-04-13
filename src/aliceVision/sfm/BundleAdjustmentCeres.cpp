@@ -615,7 +615,6 @@ void BundleAdjustmentCeres::addExtrinsicsToProblem(const sfmData::SfMData& sfmDa
 
     const bool isConstant = (getPoseState(poseId) == EParameterState::CONSTANT);
 
-    std::cout << "addpose" << isConstant << std::endl;
     addPose(pose, isConstant, _posesBlocks[poseId]);
   }
 
@@ -1121,9 +1120,8 @@ bool BundleAdjustmentCeres::adjust(sfmData::SfMData& sfmData, ERefineOptions ref
   return true;
 }
 
-bool BundleAdjustmentCeres::computePoseUncertainty(sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId)
+bool BundleAdjustmentCeres::computePoseUncertainty(Eigen::Matrix<double, 6, 6> & C, sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId)
 {
-    std::cout << "o" << std::endl;
   if (_posesBlocks.find(poseId) == _posesBlocks.end())
   {
     return false;
@@ -1164,16 +1162,21 @@ bool BundleAdjustmentCeres::computePoseUncertainty(sfmData::SfMData& sfmData, ER
 
   std::vector<std::pair<const double*, const double*>> blocks;
 
+  double* ptr;
+
   for (auto & it : _posesBlocks)
   {
-      if (it.first == poseId)
+      ptr = it.second.data();
+      blocks.push_back(std::make_pair(ptr, ptr));
+
+       if (it.first == poseId)
       {
-          blocks.push_back(std::make_pair(it.second.data(), it.second.data()));
-          problem.SetParameterBlockVariable(it.second.data());
+          
+          problem.SetParameterBlockVariable(ptr);
       }
       else
       {
-          problem.SetParameterBlockConstant(it.second.data());
+          problem.SetParameterBlockConstant(ptr);
       }
   }
   
@@ -1183,8 +1186,18 @@ bool BundleAdjustmentCeres::computePoseUncertainty(sfmData::SfMData& sfmData, ER
       return false;
   }
 
-  /*double data[16 * 16];
-      if (cov.GetCovarianceBlockInTangentSpace(it.second.data(), it.second.data(), data))*/
+
+
+  double data[16 * 16];
+  if (!cov.GetCovarianceBlockInTangentSpace(_posesBlocks[poseId].data(), _posesBlocks[poseId].data(), data))
+  {
+      return false;
+  }
+
+  
+  Eigen::Map<Eigen::Matrix<double, 6, 6>> J(data);
+  
+  C = J;
 
   return true;
 }

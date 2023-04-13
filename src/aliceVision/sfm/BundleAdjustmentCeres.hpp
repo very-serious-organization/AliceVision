@@ -139,7 +139,7 @@ public:
    */
   bool adjust(sfmData::SfMData& sfmData, ERefineOptions refineOptions = REFINE_ALL);
 
-  bool computePoseUncertainty(sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId);
+  bool computePoseUncertainty(Eigen::Matrix<double, 6, 6> & C, sfmData::SfMData& sfmData, ERefineOptions refineOptions, IndexT poseId);
 
   /**
    * @brief Ajust parameters according to the local reconstruction graph in order do perfomr an optimezed bundle adjustmentor
