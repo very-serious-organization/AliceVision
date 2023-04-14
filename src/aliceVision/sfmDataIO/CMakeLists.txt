@@ -1,3 +1,5 @@
+find_package(msgpack-cxx REQUIRED)
+
 # Headers
 set(sfmDataIO_files_headers
   sfmDataIO.hpp
@@ -5,6 +7,7 @@ set(sfmDataIO_files_headers
   colmap.hpp
   gtIO.hpp
   jsonIO.hpp
+  msgpackIO.hpp
   middlebury.hpp
   plyIO.hpp
   viewIO.hpp
@@ -18,6 +21,7 @@ set(sfmDataIO_files_sources
   colmap.cpp
   gtIO.cpp
   jsonIO.cpp
+  msgpackIO.cpp
   middlebury.cpp
   plyIO.cpp
   viewIO.cpp
@@ -45,6 +49,7 @@ alicevision_add_library(aliceVision_sfmDataIO
     Boost::filesystem
     Boost::regex
     Boost::boost
+    msgpack-cxx
 )
 
 
