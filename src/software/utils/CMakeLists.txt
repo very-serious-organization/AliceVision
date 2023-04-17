@@ -76,6 +76,16 @@ alicevision_add_software(aliceVision_voctreeCreation
         Boost::program_options
 )
 
+# Voctree creation
+alicevision_add_software(aliceVision_iotest
+  SOURCE main_iotest.cpp
+  FOLDER ${FOLDER_SOFTWARE_UTILS}
+  LINKS aliceVision_sfmData
+        aliceVision_sfmDataIO
+        aliceVision_system
+        Boost::program_options
+)
+
 # Voctree query utility
 alicevision_add_software(aliceVision_voctreeQueryUtility
   SOURCE main_voctreeQueryUtility.cpp

@@ -17,5 +17,7 @@ namespace sfmDataIO {
  */
 void generateSampleScene(sfmData::SfMData & output);
 
+void generateLargeScene(sfmData::SfMData & output);
+
 } // namespace sfmDataIO
 } // namespace aliceVision

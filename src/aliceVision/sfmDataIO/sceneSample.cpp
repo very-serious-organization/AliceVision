@@ -62,5 +62,29 @@ void generateSampleScene(sfmData::SfMData & output)
     }
 }
 
+void generateLargeScene(sfmData::SfMData & output)
+{
+    sfmData::Landmarks & rLandmarks = output.getLandmarks();
+
+    for (int i = 0; i < 1000000;i++)
+    {
+        sfmData::Landmark l;
+        l.X.x() = std::rand();
+        l.X.y() = std::rand();
+        l.X.z() = std::rand();
+
+        l.rgb.r() = std::rand();
+        l.rgb.g() = std::rand();
+        l.rgb.b() = std::rand();
+
+        l.descType = feature::EImageDescriberType::DSPSIFT;
+
+        l.observations[0] = sfmData::Observation(Vec2::Random(), std::rand(), 1.0);
+        l.observations[1] = sfmData::Observation(Vec2::Random(), std::rand(), 1.0);
+
+        rLandmarks[i] = l;
+    }
+}
+
 } // namespace sfmDataIO
 } // namespace aliceVision

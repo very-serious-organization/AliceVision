@@ -12,6 +12,7 @@
 #include <aliceVision/sfmDataIO/plyIO.hpp>
 #include <aliceVision/sfmDataIO/bafIO.hpp>
 #include <aliceVision/sfmDataIO/gtIO.hpp>
+#include <aliceVision/sfmDataIO/msgpackIO.hpp>
 
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_ALEMBIC)
 #include <aliceVision/sfmDataIO/AlembicExporter.hpp>
@@ -101,6 +102,10 @@ bool Load(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partF
   {
     status = loadJSON(sfmData, filename, partFlag);
   }
+  else if (extension == ".msg")
+  {
+    status = loadMsgPack(sfmData, filename, partFlag);
+  }
   else if (extension == ".abc") // Alembic
   {
 #if ALICEVISION_IS_DEFINED(ALICEVISION_HAVE_ALEMBIC)
@@ -144,6 +149,10 @@ bool Save(const sfmData::SfMData& sfmData, const std::string& filename, ESfMData
   else if(extension == ".ply") // Polygon File
   {
     status = savePLY(sfmData, tmpPath, partFlag);
+  }
+  else if(extension == ".msg") // Polygon File
+  {
+    status = saveMsgPack(sfmData, tmpPath, partFlag);
   }
   else if (extension == ".baf") // Bundle Adjustment File
   {

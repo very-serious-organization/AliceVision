@@ -29,13 +29,9 @@ bool saveMsgPack(const sfmData::SfMData& sfmData, const std::string& filename, E
  * @param[out] sfmData The output SfMData
  * @param[in] filename The filename
  * @param[in] partFlag The ESfMData load flag
- * @param[in] incompleteViews If true, try to load incomplete views
- * @param[in] viewIdMethod ViewId generation method to use if incompleteViews is true
- * @param[in] viewIdRegex Optional regex used when viewIdMethod is FILENAME
  * @return true if completed
  */
-bool loadMsgPack(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag, bool incompleteViews = false,
-              EViewIdMethod viewIdMethod = EViewIdMethod::METADATA, const std::string& viewIdRegex = "");
+bool loadMsgPack(sfmData::SfMData& sfmData, const std::string& filename, ESfMData partFlag);
 
 } // namespace sfmDataIO
 } // namespace aliceVision
