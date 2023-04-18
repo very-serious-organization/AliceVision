@@ -109,6 +109,20 @@ if(ALICEVISION_BUILD_SFM)
           Boost::filesystem
   )
 
+  # Track builder
+  alicevision_add_software(aliceVision_tracksBuilder
+    SOURCE main_tracksBuilder.cpp
+    FOLDER ${FOLDER_SOFTWARE_PIPELINE}
+    LINKS aliceVision_system
+          aliceVision_cmdline
+          aliceVision_feature
+          aliceVision_sfm
+          aliceVision_sfmData
+          Boost::program_options
+          Boost::filesystem
+          Boost::json
+  )
+
   # Incremental / Sequential SfM
   alicevision_add_software(aliceVision_incrementalSfM
     SOURCE main_incrementalSfM.cpp
