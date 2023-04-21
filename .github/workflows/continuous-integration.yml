@@ -137,6 +137,20 @@ jobs:
           useVcpkgToolchainFile: true
           buildWithCMake: true
 
+      - name: Collect Artifacts
+        run: |
+          # Create a directory to store artifacts
+          mkdir artifacts
+
+          # Copy artifacts from the install folder to the artifacts folder
+          copy "${{ env.ALICEVISION_ROOT }}/*" artifacts/
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: my-artifacts
+          path: artifacts
+
       - name: UnitTests
         uses: lukka/run-cmake@v3
         with:
